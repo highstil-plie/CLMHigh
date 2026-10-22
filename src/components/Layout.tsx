@@ -9,14 +9,15 @@ import { useAuth } from './AuthGate'
 
 export function Logo({ dark }: { dark?: boolean }) {
   return (
-    <Link to="/" className="flex items-center gap-2 select-none">
-      <span className="relative inline-block w-6 h-6">
-        <span className="absolute inset-0 rounded-sm bg-brand" />
-        <span className="absolute right-0 bottom-0 w-2.5 h-2.5 rounded-full bg-[#ff5252] translate-x-1/3 translate-y-1/3" />
-      </span>
-      <span className={cx('text-xl font-bold tracking-tight', dark ? 'text-white' : 'text-ink')}>
-        clm<span className="text-[10px] align-top ml-0.5 font-normal">®</span>
-      </span>
+    <Link to="/" className="flex items-center select-none" aria-label="Highstil Plié, início">
+      <img
+        src="/logo-highstil-plie.png"
+        alt="Highstil Plié"
+        width={1644}
+        height={610}
+        // O arquivo é preto sobre transparente: em fundo escuro é invertido para branco.
+        className={cx('h-9 w-auto', dark && 'invert')}
+      />
     </Link>
   )
 }
