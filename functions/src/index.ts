@@ -52,9 +52,17 @@ async function requireMember(email: string | undefined, uid: string | undefined)
   return { uid, email }
 }
 
-/** Mesma checagem para as funções HTTP, que recebem o token no cabeçalho. */
-async function requireMemberFromHeader(authorization: string | undefined): Promise<Caller> {
-  const token = authorization?.startsWith('Bearer ') ? authorization.slice(7) : null
+/**
+ * Checagem para as funções HTTP.
+ *
+ * O token vem preferencialmente em `X-Clm-Token`, não em `Authorization`.
+ * Um Bearer com JWT assinado pelo Google faz a infraestrutura de borda tentar
+ * validá-lo como credencial de IAM, e em algumas redes a requisição é
+ * respondida com 404 antes de chegar aqui. Um cabeçalho próprio passa intacto.
+ * O `Authorization` continua aceito para não quebrar clientes antigos.
+ */
+async function requireMemberFromHeader(authorization: string | undefined, clmToken?: string | undefined): Promise<Caller> {
+  const token = clmToken?.trim() || (authorization?.startsWith('Bearer ') ? authorization.slice(7) : null)
   if (!token) throw new HttpsError('unauthenticated', 'Token ausente.')
   let decoded
   try {
@@ -96,7 +104,7 @@ export const clmAssinafyUpload = onRequest(
         res.status(405).json({ error: 'Use POST.' })
         return
       }
-      const caller = await requireMemberFromHeader(req.headers.authorization)
+      const caller = await requireMemberFromHeader(req.headers.authorization, req.headers['x-clm-token'] as string | undefined)
       const bytes = req.rawBody
       if (!bytes?.length) {
         res.status(400).json({ error: 'Corpo vazio: envie os bytes do arquivo.' })
@@ -123,7 +131,7 @@ export const clmAssinafyDownload = onRequest(
   { ...base, secrets: [ASSINAFY_API_KEY], memory: '512MiB', timeoutSeconds: 120 },
   async (req, res) => {
     try {
-      await requireMemberFromHeader(req.headers.authorization)
+      await requireMemberFromHeader(req.headers.authorization, req.headers['x-clm-token'] as string | undefined)
       const documentId = String(req.query.documentId || '')
       const artifact = String(req.query.artifact || 'original') as ArtifactName
       if (!documentId) {
@@ -141,6 +149,37 @@ export const clmAssinafyDownload = onRequest(
     } catch (e) {
       sendError(res, e)
     }
+  },
+)
+
+/**
+ * Mesma função de upload, porém como callable.
+ *
+ * O callable usa o transporte do SDK do Firebase, que resolve a URL sozinho e
+ * manda o token no corpo, não no cabeçalho Authorization. Serve de alternativa
+ * quando a chamada HTTP direta é barrada por proxy, extensão ou pela
+ * interceptação do cabeçalho pela infraestrutura do Google.
+ *
+ * O arquivo vai em base64, o que infla cerca de 33%: o teto fica em 6 MB de
+ * PDF, abaixo do limite de 10 MB do callable.
+ */
+export const clmAssinafyUploadCallable = onCall(
+  { ...base, secrets: [ASSINAFY_API_KEY, ASSINAFY_ACCOUNT_ID], memory: '512MiB', timeoutSeconds: 120 },
+  async (req: CallableRequest<{ fileBase64: string; fileName?: string; contentType?: string }>) => {
+    const caller = await requireMember(req.auth?.token.email, req.auth?.uid)
+    const b64 = req.data?.fileBase64
+    if (!b64) throw new HttpsError('invalid-argument', 'Envie fileBase64.')
+    const bytes = Buffer.from(b64, 'base64')
+    if (bytes.length === 0) throw new HttpsError('invalid-argument', 'Arquivo vazio.')
+    if (bytes.length > MAX_UPLOAD) throw new HttpsError('invalid-argument', 'Arquivo acima de 20 MB.')
+
+    const doc = await uploadDocument(ASSINAFY_API_KEY.value(), ASSINAFY_ACCOUNT_ID.value(), {
+      name: req.data?.fileName || 'documento.pdf',
+      bytes,
+      contentType: req.data?.contentType || 'application/pdf',
+    })
+    logger.info('Documento enviado ao Assinafy (callable)', { documentId: doc.id, by: caller.email })
+    return { documentId: doc.id, status: doc.status ?? null, name: doc.name ?? req.data?.fileName ?? null }
   },
 )
 

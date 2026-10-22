@@ -78,18 +78,53 @@ async function readError(res: Response, fallback: string): Promise<never> {
   throw new Error(msg)
 }
 
-/** Envia o PDF e devolve o id do documento no Assinafy. */
+async function blobToBase64(b: Blob): Promise<string> {
+  const buf = new Uint8Array(await b.arrayBuffer())
+  let bin = ''
+  // Em blocos, para não estourar a pilha com arquivos grandes.
+  for (let i = 0; i < buf.length; i += 8192) bin += String.fromCharCode(...buf.subarray(i, i + 8192))
+  return btoa(bin)
+}
+
+/** Envio pelo transporte do SDK, imune a bloqueio do cabeçalho Authorization. */
+async function uploadViaCallable(file: Blob, fileName: string): Promise<{ documentId: string; status: string | null }> {
+  const fn = httpsCallable(getFunctions(undefined, REGION), 'clmAssinafyUploadCallable')
+  const out = await fn({
+    fileBase64: await blobToBase64(file),
+    fileName,
+    contentType: file.type || 'application/pdf',
+  })
+  return out.data as { documentId: string; status: string | null }
+}
+
+/**
+ * Envia o PDF e devolve o id do documento no Assinafy.
+ *
+ * Tenta primeiro a função HTTP, que não precisa converter o arquivo. Se ela
+ * devolver 404, o que acontece quando algo entre o navegador e o Google barra
+ * a chamada direta, recorre ao callable, que usa o transporte do SDK.
+ */
 export async function uploadToAssinafy(file: Blob, fileName: string): Promise<{ documentId: string; status: string | null }> {
   assertEnabled()
-  const res = await callFunction('clmAssinafyUpload', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${await idToken()}`,
-      'Content-Type': file.type || 'application/pdf',
-      'X-File-Name': fileName,
-    },
-    body: file,
-  })
+  // Cabeçalhos só aceitam Latin-1: acentos passam, travessão e aspas curvas não.
+  const safeName = fileName.replace(/[^ -ÿ]/g, '-')
+  let res: Response
+  try {
+    res = await callFunction('clmAssinafyUpload', {
+      method: 'POST',
+      headers: {
+        // Cabeçalho próprio em vez de Authorization: um Bearer com JWT do Google
+        // é interceptado pela borda em algumas redes e vira 404.
+        'X-Clm-Token': await idToken(),
+        'Content-Type': file.type || 'application/pdf',
+        'X-File-Name': safeName,
+      },
+      body: file,
+    })
+  } catch {
+    return uploadViaCallable(file, safeName)
+  }
+  if (res.status === 404) return uploadViaCallable(file, safeName)
   if (!res.ok) await readError(res, 'Falha ao enviar o documento ao Assinafy.')
   return res.json()
 }
@@ -98,7 +133,7 @@ export async function uploadToAssinafy(file: Blob, fileName: string): Promise<{ 
 export async function downloadFromAssinafy(documentId: string, artifact: ArtifactName = 'original'): Promise<Blob> {
   assertEnabled()
   const qs = `?documentId=${encodeURIComponent(documentId)}&artifact=${artifact}`
-  const init = { headers: { Authorization: `Bearer ${await idToken()}` } }
+  const init = { headers: { 'X-Clm-Token': await idToken() } }
   let res = await fetch(endpoint('clmAssinafyDownload') + qs, init)
   if (res.status === 404) {
     const alt = runEndpoint('clmAssinafyDownload')
