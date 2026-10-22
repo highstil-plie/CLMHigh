@@ -79,7 +79,16 @@ export function authErrorMessage(code: string): string {
     case 'auth/network-request-failed':
       return 'Sem conexão com o Firebase. Verifique a internet.'
     case 'auth/operation-not-allowed':
-      return 'Login por e-mail e senha está desativado no console do Firebase.'
+      return 'Este método de login está desativado no console do Firebase. Ative em Authentication, aba Sign-in method.'
+    case 'auth/popup-closed-by-user':
+    case 'auth/cancelled-popup-request':
+      return 'Janela do Google fechada antes de concluir.'
+    case 'auth/popup-blocked':
+      return 'O navegador bloqueou a janela do Google. Libere os pop-ups para este endereço e tente de novo.'
+    case 'auth/account-exists-with-different-credential':
+      return 'Já existe uma conta com este e-mail criada por outro método. Entre com e-mail e senha.'
+    case 'auth/unauthorized-domain':
+      return 'Este endereço não está autorizado no Firebase. Acrescente-o em Authentication, Settings, Authorized domains.'
     default:
       return 'Não foi possível concluir. Tente novamente.'
   }
