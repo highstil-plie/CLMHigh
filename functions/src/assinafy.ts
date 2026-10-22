@@ -89,20 +89,56 @@ export interface SignerInput {
 }
 
 /**
+ * Garante que a pessoa exista como signatário no workspace e devolve o id.
+ *
+ * O Assinafy não aceita nome e e-mail soltos no pedido de assinatura: cada
+ * signatário precisa existir antes e ser referenciado pelo id. Busca por
+ * e-mail primeiro para não duplicar quem já foi cadastrado.
+ */
+export async function ensureSigner(apiKey: string, accountId: string, signer: SignerInput): Promise<string> {
+  const email = signer.email.trim().toLowerCase()
+  const acc = encodeURIComponent(accountId)
+
+  const found = await fetch(`${BASE}/accounts/${acc}/signers?search=${encodeURIComponent(email)}&per-page=20`, { headers: headers(apiKey) })
+  const list = (await parse(found)) as { data?: { id?: string; email?: string }[] } | null
+  const hit = (list?.data ?? []).find((x) => x.email?.toLowerCase() === email && x.id)
+  if (hit?.id) return hit.id
+
+  const res = await fetch(`${BASE}/accounts/${acc}/signers`, {
+    method: 'POST',
+    headers: { ...headers(apiKey), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ full_name: signer.full_name.trim(), email }),
+  })
+  const created = (await parse(res)) as { data?: { id?: string }; id?: string } | null
+  const id = created?.data?.id ?? created?.id
+  if (!id) throw new AssinafyError(502, `Assinafy não devolveu o id do signatário ${email}.`)
+  return id
+}
+
+/**
  * Pede assinatura. O método `virtual` coleta a assinatura sem posicionar campos
  * página a página, que é o que o CLM precisa para o fluxo padrão.
+ *
+ * Os signatários são resolvidos para ids antes, em sequência, porque o
+ * Assinafy recusa o pedido sem o id de cada um.
  */
 export async function createAssignment(
   apiKey: string,
+  accountId: string,
   documentId: string,
   input: { signers: SignerInput[]; message?: string; expires_at?: string },
 ): Promise<Record<string, unknown>> {
+  const ids: string[] = []
+  for (const s of input.signers) ids.push(await ensureSigner(apiKey, accountId, s))
+  // O mesmo e-mail repetido na lista resolveria para o mesmo id duas vezes.
+  const unique = [...new Set(ids)]
+
   const res = await fetch(`${BASE}/documents/${encodeURIComponent(documentId)}/assignments`, {
     method: 'POST',
     headers: { ...headers(apiKey), 'Content-Type': 'application/json' },
     body: JSON.stringify({
       method: 'virtual',
-      signers: input.signers,
+      signers: unique.map((id) => ({ id })),
       ...(input.message ? { message: input.message } : {}),
       ...(input.expires_at ? { expires_at: input.expires_at } : {}),
     }),

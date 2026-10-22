@@ -227,7 +227,7 @@ export const clmAssinafyStatus = onCall(
 
 /** Dispara o pedido de assinatura para os signatários informados. */
 export const clmAssinafyRequestSignature = onCall(
-  { ...base, secrets: [ASSINAFY_API_KEY] },
+  { ...base, secrets: [ASSINAFY_API_KEY, ASSINAFY_ACCOUNT_ID] },
   async (req: CallableRequest<{ documentId: string; signers: { full_name: string; email: string }[]; message?: string; expires_at?: string }>) => {
     const caller = await requireMember(req.auth?.token.email, req.auth?.uid)
     const { documentId, signers, message, expires_at } = req.data ?? {}
@@ -237,7 +237,7 @@ export const clmAssinafyRequestSignature = onCall(
       if (!s?.email || !s?.full_name) throw new HttpsError('invalid-argument', 'Cada signatário precisa de nome e e-mail.')
     }
     try {
-      const out = await createAssignment(clean(ASSINAFY_API_KEY), documentId, { signers, message, expires_at })
+      const out = await createAssignment(clean(ASSINAFY_API_KEY), clean(ASSINAFY_ACCOUNT_ID), documentId, { signers, message, expires_at })
       logger.info('Assinatura solicitada', { documentId, signers: signers.length, by: caller.email })
       return out
     } catch (e) {
