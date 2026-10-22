@@ -63,19 +63,17 @@ function assertEnabled() {
 }
 
 async function readError(res: Response, fallback: string): Promise<never> {
-  if (res.status === 404) {
-    throw new Error(
-      'A função não respondeu (404). Isso acontece nos primeiros minutos após um deploy, enquanto o endereço propaga. Tente de novo em instantes.',
-    )
-  }
-  let msg = fallback
+  let msg = ''
   try {
     const j = (await res.json()) as { error?: string }
     if (j?.error) msg = j.error
   } catch {
     /* resposta sem JSON */
   }
-  throw new Error(msg)
+  // Uma mensagem no corpo significa que a função respondeu: mostra a causa real.
+  if (msg) throw new Error(msg)
+  if (res.status === 404) throw new Error('A função não foi encontrada (404). Confira se o deploy das funções foi concluído.')
+  throw new Error(fallback)
 }
 
 async function blobToBase64(b: Blob): Promise<string> {
@@ -124,7 +122,6 @@ export async function uploadToAssinafy(file: Blob, fileName: string): Promise<{ 
   } catch {
     return uploadViaCallable(file, safeName)
   }
-  if (res.status === 404) return uploadViaCallable(file, safeName)
   if (!res.ok) await readError(res, 'Falha ao enviar o documento ao Assinafy.')
   return res.json()
 }

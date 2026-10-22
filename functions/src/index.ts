@@ -40,6 +40,17 @@ interface Caller {
   email: string
 }
 
+/** Converte a falha do Assinafy num erro de callable que carrega a causa, em vez de INTERNAL. */
+function wrapAssinafy(e: unknown): never {
+  if (e instanceof HttpsError) throw e
+  if (e instanceof AssinafyError) {
+    logger.error('Assinafy recusou a chamada', { status: e.status, message: e.message })
+    throw new HttpsError('failed-precondition', `Assinafy respondeu ${e.status}: ${e.message}`)
+  }
+  logger.error('Falha inesperada', e)
+  throw new HttpsError('internal', e instanceof Error ? e.message : 'Falha inesperada.')
+}
+
 /** Confere que quem chamou está autenticado E é membro do espaço de trabalho. */
 async function requireMember(email: string | undefined, uid: string | undefined): Promise<Caller> {
   if (!uid || !email) throw new HttpsError('unauthenticated', 'Faça login para continuar.')
@@ -84,7 +95,10 @@ function sendError(res: ErrorSink, e: unknown) {
     return
   }
   if (e instanceof AssinafyError) {
-    res.status(e.status >= 400 && e.status < 600 ? e.status : 502).json({ error: e.message })
+    // 502: a função funcionou, quem falhou foi o Assinafy. Repassar o status dele
+    // (um 404, por exemplo) faria parecer que a própria função não existe.
+    logger.error('Assinafy recusou a chamada', { status: e.status, message: e.message })
+    res.status(502).json({ error: `Assinafy respondeu ${e.status}: ${e.message}`, assinafyStatus: e.status })
     return
   }
   logger.error('Falha inesperada', e)
@@ -173,13 +187,17 @@ export const clmAssinafyUploadCallable = onCall(
     if (bytes.length === 0) throw new HttpsError('invalid-argument', 'Arquivo vazio.')
     if (bytes.length > MAX_UPLOAD) throw new HttpsError('invalid-argument', 'Arquivo acima de 20 MB.')
 
-    const doc = await uploadDocument(ASSINAFY_API_KEY.value(), ASSINAFY_ACCOUNT_ID.value(), {
-      name: req.data?.fileName || 'documento.pdf',
-      bytes,
-      contentType: req.data?.contentType || 'application/pdf',
-    })
-    logger.info('Documento enviado ao Assinafy (callable)', { documentId: doc.id, by: caller.email })
-    return { documentId: doc.id, status: doc.status ?? null, name: doc.name ?? req.data?.fileName ?? null }
+    try {
+      const doc = await uploadDocument(ASSINAFY_API_KEY.value(), ASSINAFY_ACCOUNT_ID.value(), {
+        name: req.data?.fileName || 'documento.pdf',
+        bytes,
+        contentType: req.data?.contentType || 'application/pdf',
+      })
+      logger.info('Documento enviado ao Assinafy (callable)', { documentId: doc.id, by: caller.email })
+      return { documentId: doc.id, status: doc.status ?? null, name: doc.name ?? req.data?.fileName ?? null }
+    } catch (e) {
+      wrapAssinafy(e)
+    }
   },
 )
 
@@ -190,7 +208,11 @@ export const clmAssinafyStatus = onCall(
     await requireMember(req.auth?.token.email, req.auth?.uid)
     const documentId = req.data?.documentId
     if (!documentId) throw new HttpsError('invalid-argument', 'Informe documentId.')
-    return getDocument(ASSINAFY_API_KEY.value(), documentId)
+    try {
+      return await getDocument(ASSINAFY_API_KEY.value(), documentId)
+    } catch (e) {
+      wrapAssinafy(e)
+    }
   },
 )
 
@@ -205,9 +227,13 @@ export const clmAssinafyRequestSignature = onCall(
     for (const s of signers) {
       if (!s?.email || !s?.full_name) throw new HttpsError('invalid-argument', 'Cada signatário precisa de nome e e-mail.')
     }
-    const out = await createAssignment(ASSINAFY_API_KEY.value(), documentId, { signers, message, expires_at })
-    logger.info('Assinatura solicitada', { documentId, signers: signers.length, by: caller.email })
-    return out
+    try {
+      const out = await createAssignment(ASSINAFY_API_KEY.value(), documentId, { signers, message, expires_at })
+      logger.info('Assinatura solicitada', { documentId, signers: signers.length, by: caller.email })
+      return out
+    } catch (e) {
+      wrapAssinafy(e)
+    }
   },
 )
 
