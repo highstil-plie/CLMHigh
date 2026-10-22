@@ -85,13 +85,49 @@ Todas, exceto o webhook, exigem login no Firebase **e** que o e-mail esteja na l
 
 ### Webhook
 
-Depois do deploy, registre o endereço no Assinafy:
+A ordem importa: a URL só existe depois que as funções sobem, e o segredo só existe depois que o endpoint é cadastrado.
+
+**1. Publique as funções.** Anote a URL de `clmAssinafyWebhook` que aparece na saída. Costuma ser:
 
 ```
 https://southamerica-east1-hsmodas-comissoes-57f17.cloudfunctions.net/clmAssinafyWebhook
 ```
 
-O segredo de assinatura vem de `GET /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}/secret` e é o valor de `ASSINAFY_WEBHOOK_SECRET`.
+**2. Veja os tipos de evento** disponíveis na sua conta. A chave vai só no ambiente da execução, nunca num arquivo:
+
+```bash
+ASSINAFY_API_KEY=sua-chave ASSINAFY_ACCOUNT_ID=sua-conta node scripts/assinafy-webhook.mjs events
+```
+
+Se quiser outros além de `document_ready`, ajuste `DEFAULT_EVENTS` no script antes de criar.
+
+**3. Crie o endpoint.** O e-mail de contato é obrigatório: o Assinafy avisa nele quando a entrega falha.
+
+```bash
+ASSINAFY_API_KEY=sua-chave ASSINAFY_ACCOUNT_ID=sua-conta ASSINAFY_CONTACT_EMAIL=voce@highstil.com.br node scripts/assinafy-webhook.mjs create https://southamerica-east1-hsmodas-comissoes-57f17.cloudfunctions.net/clmAssinafyWebhook
+```
+
+O script liga `signing_enabled`. Sem isso o Assinafy entrega sem assinar e a função recusa tudo, porque ela exige assinatura válida.
+
+**4. Guarde o segredo.** Ele sai no passo anterior, no formato `whsec_...`. Cadastre:
+
+```bash
+firebase functions:secrets:set ASSINAFY_WEBHOOK_SECRET
+```
+
+**5. Republique as funções**, para que peguem o segredo:
+
+```bash
+firebase deploy --only functions:clm
+```
+
+Para conferir depois: `node scripts/assinafy-webhook.mjs list`.
+
+### Como a assinatura é conferida
+
+O Assinafy usa o padrão [Standard Webhooks](https://www.standardwebhooks.com/). Cada entrega traz `webhook-id`, `webhook-timestamp` e `webhook-signature`, e o conteúdo assinado é `{id}.{timestamp}.{corpo cru}` com HMAC-SHA256 e a chave decodificada de base64.
+
+A função confere tudo isso e recusa entregas com mais de 5 minutos, o que bloqueia reenvio malicioso. A verificação está em `functions/src/standardWebhooks.ts`, coberta por testes de corpo adulterado, segredo errado, id trocado e carimbo antigo.
 
 ## Onde cada coisa fica guardada
 

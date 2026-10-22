@@ -12,7 +12,7 @@ import { getFirestore } from 'firebase-admin/firestore'
 import { onCall, onRequest, HttpsError, type CallableRequest } from 'firebase-functions/v2/https'
 import { defineSecret, defineString } from 'firebase-functions/params'
 import { logger } from 'firebase-functions'
-import { createHmac, timingSafeEqual } from 'node:crypto'
+import { verifyStandardWebhook } from './standardWebhooks.js'
 import { ARTIFACTS, AssinafyError, createAssignment, downloadArtifact, getDocument, uploadDocument, type ArtifactName } from './assinafy.js'
 
 initializeApp()
@@ -175,14 +175,17 @@ export const clmAssinafyWebhook = onRequest(
   { region: REGION, secrets: [ASSINAFY_WEBHOOK_SECRET], memory: '256MiB' },
   async (req, res) => {
     try {
-      const secret = ASSINAFY_WEBHOOK_SECRET.value()
-      const signature = String(req.headers['x-assinafy-signature'] || req.headers['x-signature'] || '')
-      const expected = createHmac('sha256', secret).update(req.rawBody ?? Buffer.alloc(0)).digest('hex')
-      const a = Buffer.from(signature.replace(/^sha256=/, ''), 'utf8')
-      const b = Buffer.from(expected, 'utf8')
-      if (a.length !== b.length || !timingSafeEqual(a, b)) {
-        logger.warn('Webhook com assinatura inválida')
-        res.status(401).json({ error: 'Assinatura inválida.' })
+      // Assinafy assina no padrão Standard Webhooks quando signing_enabled está ligado.
+      const check = verifyStandardWebhook({
+        secret: ASSINAFY_WEBHOOK_SECRET.value(),
+        id: req.headers['webhook-id'] as string | undefined,
+        timestamp: req.headers['webhook-timestamp'] as string | undefined,
+        signature: req.headers['webhook-signature'] as string | undefined,
+        body: req.rawBody ?? Buffer.alloc(0),
+      })
+      if (!check.ok) {
+        logger.warn('Webhook recusado', { motivo: check.reason })
+        res.status(401).json({ error: check.reason })
         return
       }
 
