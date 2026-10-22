@@ -40,3 +40,4 @@ functions/node_modules/
 functions/lib/
 functions/*.log
 .firebase/
+functions/.env.local
