@@ -59,7 +59,7 @@
   ],
   "storage": [
     {
-      "bucket": "BUCKET_A_DEFINIR",
+      "bucket": "clm",
       "rules": "storage.rules"
     }
   ]

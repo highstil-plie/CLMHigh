@@ -19,6 +19,12 @@ const cfg = {
  */
 export const DATABASE_ID: string = import.meta.env.VITE_FIREBASE_DATABASE_ID || ''
 
+/**
+ * Bucket dedicado do CLM, para anexos que não vão para assinatura.
+ * O documento assinado vive no Assinafy, não aqui.
+ */
+export const CLM_BUCKET: string = import.meta.env.VITE_FIREBASE_CLM_BUCKET || ''
+
 /** Espaço de trabalho do CLM dentro do projeto, que pode ser compartilhado com outros apps. */
 export const WORKSPACE: string = import.meta.env.VITE_CLM_WORKSPACE || 'default'
 

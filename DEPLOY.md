@@ -9,7 +9,7 @@ O projeto Firebase `hsmodas-comissoes-57f17` é compartilhado por vários sistem
 | Projeto | `hsmodas-comissoes-57f17` | — |
 | Site | `hspl-contratos` (alvo `clm`) | Alvo nomeado; os outros 10 sites não são tocados |
 | Banco Firestore | `clm-contratos` (novo) | Banco dedicado; os outros 3 não entram no `firebase.json` |
-| Bucket Storage | a criar | Regras apontadas a um bucket específico, nunca ao padrão |
+| Bucket Storage | `clm` | `firebase.json` fixa o bucket; o padrão do projeto não é tocado |
 | Funções | codebase `clm`, prefixo `clm*` | As 57 funções existentes ficam noutro codebase |
 | Região | `southamerica-east1` | Mesma convenção do projeto |
 
@@ -35,19 +35,17 @@ Compila e publica em https://hspl-contratos.web.app. O `firebase.json` usa o alv
 
 As variáveis do `.env` entram no bundle **no momento do build**. Como o `.env` não está no Git, o build precisa rodar numa máquina que o tenha.
 
-## 3. Bucket do Storage
+## 3. Bucket do Storage — já publicado
 
-O CLI não cria buckets. No Console do Firebase → Storage → **Adicionar bucket**, crie um com um nome próprio, por exemplo `clm-contratos-anexos`, na região `southamerica-east1`.
-
-Depois troque `BUCKET_A_DEFINIR` em `firebase.json` pelo nome real e publique:
+O bucket `clm` guarda anexos que **não** vão para assinatura. O documento assinado continua no Assinafy.
 
 ```bash
 npm run deploy:storage
 ```
 
-> O campo `"bucket"` é obrigatório. Sem ele o deploy aplicaria as regras ao bucket padrão do projeto, que é usado por outros sistemas.
+> O campo `"bucket": "clm"` em `firebase.json` é o que prende as regras a esse bucket. Sem ele o deploy aplicaria as regras ao bucket padrão do projeto, usado por outros sistemas.
 
-O bucket guarda anexos que **não** vão para assinatura. O documento assinado continua no Assinafy.
+As regras consultam a lista de membros no banco `clm-contratos`. Essa consulta entre serviços compila, mas ainda não foi exercitada em tempo de execução: o app não envia arquivos para o bucket até a tela de anexos ser implementada.
 
 ## 4. Funções do Assinafy
 
