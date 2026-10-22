@@ -8,23 +8,22 @@ O projeto Firebase `hsmodas-comissoes-57f17` é compartilhado por vários sistem
 |---|---|---|
 | Projeto | `hsmodas-comissoes-57f17` | — |
 | Site | `hspl-contratos` (alvo `clm`) | Alvo nomeado; os outros 10 sites não são tocados |
-| Banco | `(default)` | Regras só da coleção `clm` |
+| Banco Firestore | `clm-contratos` (novo) | Banco dedicado; os outros 3 não entram no `firebase.json` |
+| Bucket Storage | a criar | Regras apontadas a um bucket específico, nunca ao padrão |
 | Funções | codebase `clm`, prefixo `clm*` | As 57 funções existentes ficam noutro codebase |
 | Região | `southamerica-east1` | Mesma convenção do projeto |
 
 O site `hspl-contratos.web.app` responde 404 hoje, ou seja, nunca recebeu deploy. Não há nada a sobrescrever.
 
-## 1. Regras do Firestore
+## 1. Regras do Firestore — já publicadas
 
-**Este é o único passo que exige cuidado manual.** Publicar `firestore.rules` substitui o conjunto inteiro de regras do banco, incluindo as dos outros aplicativos.
-
-Antes de publicar, abra Console do Firebase → Firestore Database → Regras, copie o conteúdo atual e **acrescente** o bloco `match /clm/{ws}` do arquivo `firestore.rules`, preservando o que já existe. Só então:
+O CLM usa o banco próprio `clm-contratos`, criado em `southamerica-east1`. Como o `firebase.json` lista apenas esse banco, publicar as regras daqui **não alcança** `(default)`, `central-pj` nem `showroom-agenda`.
 
 ```bash
 npm run deploy:rules
 ```
 
-Se preferir não arriscar o arquivo local, cole o bloco direto no console e publique por lá.
+Foi o que eliminou a necessidade de mesclar regras com outros sistemas: cada banco Firestore tem o seu próprio conjunto.
 
 ## 2. Site
 
@@ -36,7 +35,21 @@ Compila e publica em https://hspl-contratos.web.app. O `firebase.json` usa o alv
 
 As variáveis do `.env` entram no bundle **no momento do build**. Como o `.env` não está no Git, o build precisa rodar numa máquina que o tenha.
 
-## 3. Funções do Assinafy
+## 3. Bucket do Storage
+
+O CLI não cria buckets. No Console do Firebase → Storage → **Adicionar bucket**, crie um com um nome próprio, por exemplo `clm-contratos-anexos`, na região `southamerica-east1`.
+
+Depois troque `BUCKET_A_DEFINIR` em `firebase.json` pelo nome real e publique:
+
+```bash
+npm run deploy:storage
+```
+
+> O campo `"bucket"` é obrigatório. Sem ele o deploy aplicaria as regras ao bucket padrão do projeto, que é usado por outros sistemas.
+
+O bucket guarda anexos que **não** vão para assinatura. O documento assinado continua no Assinafy.
+
+## 4. Funções do Assinafy
 
 As funções levam a chave do Assinafy, que nunca pode ir para o navegador. Cadastre os segredos uma vez:
 

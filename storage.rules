@@ -1,0 +1,43 @@
+rules_version = '2';
+
+// Regras do bucket dedicado ao CLM.
+//
+// ATENÇÃO: o `firebase.json` aponta este arquivo para um bucket específico, via
+// `"bucket": "<nome>"`. Sem esse campo o deploy alcançaria o bucket padrão do
+// projeto, que é usado por outros sistemas da conta.
+//
+// O acesso espelha o do Firestore: só membros do espaço de trabalho, lidos do
+// banco `clm-contratos`.
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function email() {
+      return request.auth != null && request.auth.token.email != null
+        ? request.auth.token.email.lower()
+        : '';
+    }
+
+    function isMember(ws) {
+      return request.auth != null
+        && firestore.exists(/databases/clm-contratos/documents/clm/$(ws))
+        && email() in firestore.get(/databases/clm-contratos/documents/clm/$(ws)).data.members;
+    }
+
+    // Anexos que não vão para assinatura. O documento assinado vive no Assinafy.
+    match /clm/{ws}/anexos/{documentId}/{fileName} {
+      allow read: if isMember(ws);
+
+      // 20 MB, mesmo limite da função de upload.
+      allow write: if isMember(ws)
+        && request.resource.size < 20 * 1024 * 1024;
+
+      allow delete: if isMember(ws);
+    }
+
+    // Nada fora de clm/ é acessível neste bucket.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

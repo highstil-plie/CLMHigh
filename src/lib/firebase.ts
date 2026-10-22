@@ -12,6 +12,13 @@ const cfg = {
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
 }
 
+/**
+ * Banco Firestore dedicado ao CLM. O projeto tem outros bancos, de outros
+ * sistemas, e manter o CLM no seu próprio isola dados e regras.
+ * Vazio recai no banco (default).
+ */
+export const DATABASE_ID: string = import.meta.env.VITE_FIREBASE_DATABASE_ID || ''
+
 /** Espaço de trabalho do CLM dentro do projeto, que pode ser compartilhado com outros apps. */
 export const WORKSPACE: string = import.meta.env.VITE_CLM_WORKSPACE || 'default'
 
@@ -27,7 +34,9 @@ if (firebaseEnabled) {
   authInstance = getAuth(app)
   // ignoreUndefinedProperties evita erro ao gravar entidades com campos opcionais ausentes
   // (etapas sem responsável, regras sem valor de comparação, etc.).
-  dbInstance = initializeFirestore(app, { ignoreUndefinedProperties: true })
+  dbInstance = DATABASE_ID
+    ? initializeFirestore(app, { ignoreUndefinedProperties: true }, DATABASE_ID)
+    : initializeFirestore(app, { ignoreUndefinedProperties: true })
 }
 
 export const auth = authInstance

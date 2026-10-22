@@ -21,6 +21,13 @@ const ASSINAFY_API_KEY = defineSecret('ASSINAFY_API_KEY')
 const ASSINAFY_ACCOUNT_ID = defineSecret('ASSINAFY_ACCOUNT_ID')
 const ASSINAFY_WEBHOOK_SECRET = defineSecret('ASSINAFY_WEBHOOK_SECRET')
 const CLM_WORKSPACE = defineString('CLM_WORKSPACE', { default: 'default' })
+/** Banco dedicado ao CLM. Os demais bancos do projeto são de outros sistemas. */
+const CLM_DATABASE = defineString('CLM_DATABASE', { default: 'clm-contratos' })
+
+/** Firestore do CLM, nunca o banco (default) do projeto. */
+function clmDb() {
+  return getFirestore(CLM_DATABASE.value())
+}
 
 const REGION = 'southamerica-east1'
 const base = { region: REGION, cors: true } as const
@@ -37,7 +44,7 @@ interface Caller {
 async function requireMember(email: string | undefined, uid: string | undefined): Promise<Caller> {
   if (!uid || !email) throw new HttpsError('unauthenticated', 'Faça login para continuar.')
   const ws = CLM_WORKSPACE.value()
-  const snap = await getFirestore().doc(`clm/${ws}`).get()
+  const snap = await clmDb().doc(`clm/${ws}`).get()
   const members: string[] = (snap.data()?.members as string[]) ?? []
   if (!members.map((m) => m.toLowerCase()).includes(email.toLowerCase())) {
     throw new HttpsError('permission-denied', 'Seu e-mail não está na lista de membros do espaço de trabalho.')
@@ -187,7 +194,7 @@ export const clmAssinafyWebhook = onRequest(
       }
 
       const ws = CLM_WORKSPACE.value()
-      const col = getFirestore().collection(`clm/${ws}/documents`)
+      const col = clmDb().collection(`clm/${ws}/documents`)
       const hits = await col.where('assinafy.documentId', '==', documentId).limit(5).get()
       await Promise.all(
         hits.docs.map((d) =>

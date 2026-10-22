@@ -1,12 +1,13 @@
 rules_version = '2';
 
-// Regras do CLM. Só tratam da coleção `clm`, para conviver com outros aplicativos
-// no mesmo projeto do Firebase. Publique com:
-//   firebase deploy --only firestore:rules
-// ou cole no console: Firestore Database > Regras.
+// Regras do banco `clm-contratos`, dedicado ao CLM.
 //
-// IMPORTANTE: se o projeto já tem regras de outro aplicativo, acrescente o bloco
-// `match /clm/{ws}` às regras existentes em vez de substituir o arquivo inteiro.
+// Este arquivo governa APENAS esse banco. O `firebase.json` lista só ele, então
+// publicar daqui não altera as regras de `(default)`, `central-pj` nem
+// `showroom-agenda`, que pertencem a outros sistemas da mesma conta.
+//
+// Publique com:
+//   npm run deploy:rules
 
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -28,17 +29,17 @@ service cloud.firestore {
     }
 
     match /clm/{ws} {
-      // Qualquer autenticado pode descobrir se o espaço existe; o conteúdo
-      // (empresa, lista de membros) só é legível para quem é membro.
+      // Qualquer autenticado descobre se o espaço existe; o conteúdo
+      // (empresa e lista de membros) só é legível para quem é membro.
       allow get: if request.auth != null && (!exists(wsPath(ws)) || isMember(ws));
 
-      // Primeiro acesso: quem cria o espaço precisa se listar como único membro.
+      // Primeiro acesso: quem cria o espaço se lista como único membro.
       allow create: if request.auth != null
         && email() != ''
         && request.resource.data.members == [email()];
 
+      // Um membro não pode se excluir da lista nem esvaziá-la.
       allow update: if isMember(ws)
-        // Um membro não pode se excluir da lista nem esvaziá-la.
         && request.resource.data.members.size() > 0
         && email() in request.resource.data.members;
 
@@ -48,6 +49,11 @@ service cloud.firestore {
       match /{collection}/{docId} {
         allow read, write: if isMember(ws);
       }
+    }
+
+    // Nada fora da coleção clm é acessível neste banco.
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }
