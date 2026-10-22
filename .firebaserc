@@ -1,0 +1,14 @@
+{
+  "projects": {
+    "default": "hsmodas-comissoes-57f17"
+  },
+  "targets": {
+    "hsmodas-comissoes-57f17": {
+      "hosting": {
+        "clm": [
+          "hspl-contratos"
+        ]
+      }
+    }
+  }
+}

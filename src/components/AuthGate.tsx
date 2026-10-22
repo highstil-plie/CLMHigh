@@ -65,6 +65,16 @@ export function AuthGate({ children }: { children: ReactNode }) {
           <h1 className="text-2xl font-semibold">{sync.state === 'denied' ? 'Acesso negado pelo Firestore' : 'Falha ao carregar'}</h1>
           <p className="text-sm text-gray-700 mt-3">{sync.message}</p>
           <p className="text-sm text-gray-600 mt-3">Você está autenticado como {user.email}.</p>
+          {sync.state === 'denied' && (
+            <ol className="text-sm text-gray-700 mt-4 list-decimal pl-5 space-y-1">
+              <li>No console do Firebase, abra Firestore Database e a aba Regras.</li>
+              <li>
+                Confirme que existe um bloco <code className="bg-gray-100 px-1 rounded">match /clm/{'{'}ws{'}'}</code>, com o conteúdo do arquivo <code className="bg-gray-100 px-1 rounded">firestore.rules</code> do projeto.
+              </li>
+              <li>Clique em Publicar e volte aqui.</li>
+            </ol>
+          )}
+          {sync.detail && <pre className="text-xs text-gray-600 bg-gray-100 border border-line rounded p-3 mt-4 whitespace-pre-wrap">{sync.detail}</pre>}
           <div className="flex gap-3 mt-6">
             <button className="btn-primary" onClick={() => void connect(user).catch(() => {})}>Tentar de novo</button>
             <button className="btn-secondary" onClick={() => void signOut(auth!)}>Sair</button>

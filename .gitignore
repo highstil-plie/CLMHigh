@@ -34,3 +34,9 @@ desktop.ini
 .env
 .env.*
 !.env.example
+
+# Cloud Functions
+functions/node_modules/
+functions/lib/
+functions/*.log
+.firebase/

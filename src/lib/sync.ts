@@ -49,6 +49,8 @@ let connected = false
 export interface SyncStatus {
   state: 'off' | 'connecting' | 'online' | 'denied' | 'error'
   message?: string
+  /** Código e etapa do erro original do Firebase, para diagnóstico. */
+  detail?: string
 }
 
 type StatusListener = (s: SyncStatus) => void
@@ -73,6 +75,12 @@ function isPermissionError(e: unknown): boolean {
 const DENIED_MESSAGE =
   'O Firestore recusou o acesso. Publique as regras do arquivo firestore.rules e confirme que o seu e-mail está na lista de membros do espaço de trabalho.'
 
+/** Detalhe técnico do erro, para distinguir regra não publicada de outros problemas. */
+function detail(e: unknown, step: string): string {
+  const err = e as { code?: string; message?: string }
+  return `Etapa: ${step}. Código: ${err?.code ?? 'desconhecido'}. ${err?.message ?? ''}`.trim()
+}
+
 /** Perfil do app a partir da conta do Firebase. */
 function profileFrom(u: FirebaseUser): User {
   const name = u.displayName?.trim() || (u.email ? u.email.split('@')[0].replace(/[._-]+/g, ' ') : 'Usuário')
@@ -95,12 +103,14 @@ export async function connect(user: FirebaseUser): Promise<void> {
   if (connected) disconnect()
   setStatus({ state: 'connecting' })
 
+  let step = 'ler o espaço de trabalho (clm/' + WORKSPACE + ')'
   try {
     const ws = wsRef(database)
     const snap = await getDoc(ws)
     const profile = profileFrom(user)
 
     if (!snap.exists()) {
+      step = 'criar o espaço de trabalho (clm/' + WORKSPACE + ')'
       // Primeiro acesso: quem entra cria o espaço e vira o único membro.
       const base = createEmptyState()
       const seedWs: WorkspaceDoc = {
@@ -113,6 +123,7 @@ export async function connect(user: FirebaseUser): Promise<void> {
       await setDoc(ws, seedWs)
     }
 
+    step = 'listar as coleções do espaço'
     const remote = await loadAll(database)
     const wsData = (snap.exists() ? snap.data() : await getDoc(ws).then((s) => s.data())) as WorkspaceDoc | undefined
 
@@ -124,6 +135,7 @@ export async function connect(user: FirebaseUser): Promise<void> {
     if (!remote.users.some((u) => u.id === user.uid)) bootstrap.users = [...(remote.users as Entity[]), profile]
 
     if (Object.keys(bootstrap).length) {
+      step = 'gravar a configuração inicial (modelos, cláusulas, painéis)'
       const batch = writeBatch(database)
       for (const [key, items] of Object.entries(bootstrap)) {
         for (const item of items as Entity[]) batch.set(doc(colRef(database, key as SyncedKey), item.id), item)
@@ -149,8 +161,9 @@ export async function connect(user: FirebaseUser): Promise<void> {
     connected = true
     setStatus({ state: 'online' })
   } catch (e) {
-    if (isPermissionError(e)) setStatus({ state: 'denied', message: DENIED_MESSAGE })
-    else setStatus({ state: 'error', message: e instanceof Error ? e.message : 'Falha ao conectar ao Firestore.' })
+    const info = detail(e, step)
+    if (isPermissionError(e)) setStatus({ state: 'denied', message: DENIED_MESSAGE, detail: info })
+    else setStatus({ state: 'error', message: e instanceof Error ? e.message : 'Falha ao conectar ao Firestore.', detail: info })
     throw e
   }
 }
