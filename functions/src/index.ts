@@ -20,6 +20,15 @@ initializeApp()
 const ASSINAFY_API_KEY = defineSecret('ASSINAFY_API_KEY')
 const ASSINAFY_ACCOUNT_ID = defineSecret('ASSINAFY_ACCOUNT_ID')
 const ASSINAFY_WEBHOOK_SECRET = defineSecret('ASSINAFY_WEBHOOK_SECRET')
+/**
+ * Valor de um segredo sem espaços nas pontas.
+ *
+ * Colar no terminal costuma trazer um TAB ou quebra de linha junto. Num ID de
+ * conta isso vai parar dentro da URL e o Assinafy responde 404; numa chave, o
+ * cabeçalho é recusado. Limpar aqui evita depender de regravar o segredo.
+ */
+const clean = (secret: { value(): string }) => secret.value().trim()
+
 const CLM_WORKSPACE = defineString('CLM_WORKSPACE', { default: 'default' })
 /** Banco dedicado ao CLM. Os demais bancos do projeto são de outros sistemas. */
 const CLM_DATABASE = defineString('CLM_DATABASE', { default: 'clm-contratos' })
@@ -131,7 +140,7 @@ export const clmAssinafyUpload = onRequest(
       const name = String(req.headers['x-file-name'] || 'documento.pdf')
       const contentType = String(req.headers['content-type'] || 'application/pdf')
 
-      const doc = await uploadDocument(ASSINAFY_API_KEY.value(), ASSINAFY_ACCOUNT_ID.value(), { name, bytes, contentType })
+      const doc = await uploadDocument(clean(ASSINAFY_API_KEY), clean(ASSINAFY_ACCOUNT_ID), { name, bytes, contentType })
       logger.info('Documento enviado ao Assinafy', { documentId: doc.id, by: caller.email })
       res.json({ documentId: doc.id, status: doc.status ?? null, name: doc.name ?? name })
     } catch (e) {
@@ -156,7 +165,7 @@ export const clmAssinafyDownload = onRequest(
         res.status(400).json({ error: `Artefato inválido. Use um de: ${ARTIFACTS.join(', ')}.` })
         return
       }
-      const { bytes, contentType } = await downloadArtifact(ASSINAFY_API_KEY.value(), documentId, artifact)
+      const { bytes, contentType } = await downloadArtifact(clean(ASSINAFY_API_KEY), documentId, artifact)
       res.setHeader('Content-Type', contentType)
       res.setHeader('Content-Disposition', `inline; filename="${documentId}-${artifact}.pdf"`)
       res.send(bytes)
@@ -188,7 +197,7 @@ export const clmAssinafyUploadCallable = onCall(
     if (bytes.length > MAX_UPLOAD) throw new HttpsError('invalid-argument', 'Arquivo acima de 20 MB.')
 
     try {
-      const doc = await uploadDocument(ASSINAFY_API_KEY.value(), ASSINAFY_ACCOUNT_ID.value(), {
+      const doc = await uploadDocument(clean(ASSINAFY_API_KEY), clean(ASSINAFY_ACCOUNT_ID), {
         name: req.data?.fileName || 'documento.pdf',
         bytes,
         contentType: req.data?.contentType || 'application/pdf',
@@ -209,7 +218,7 @@ export const clmAssinafyStatus = onCall(
     const documentId = req.data?.documentId
     if (!documentId) throw new HttpsError('invalid-argument', 'Informe documentId.')
     try {
-      return await getDocument(ASSINAFY_API_KEY.value(), documentId)
+      return await getDocument(clean(ASSINAFY_API_KEY), documentId)
     } catch (e) {
       wrapAssinafy(e)
     }
@@ -228,7 +237,7 @@ export const clmAssinafyRequestSignature = onCall(
       if (!s?.email || !s?.full_name) throw new HttpsError('invalid-argument', 'Cada signatário precisa de nome e e-mail.')
     }
     try {
-      const out = await createAssignment(ASSINAFY_API_KEY.value(), documentId, { signers, message, expires_at })
+      const out = await createAssignment(clean(ASSINAFY_API_KEY), documentId, { signers, message, expires_at })
       logger.info('Assinatura solicitada', { documentId, signers: signers.length, by: caller.email })
       return out
     } catch (e) {
@@ -248,7 +257,7 @@ export const clmAssinafyWebhook = onRequest(
     try {
       // Assinafy assina no padrão Standard Webhooks quando signing_enabled está ligado.
       const check = verifyStandardWebhook({
-        secret: ASSINAFY_WEBHOOK_SECRET.value(),
+        secret: clean(ASSINAFY_WEBHOOK_SECRET),
         id: req.headers['webhook-id'] as string | undefined,
         timestamp: req.headers['webhook-timestamp'] as string | undefined,
         signature: req.headers['webhook-signature'] as string | undefined,
