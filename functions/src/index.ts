@@ -189,7 +189,7 @@ export const clmAssinafyWebhook = onRequest(
         return
       }
 
-      const event = req.body as { event?: string; data?: { id?: string; status?: string } }
+      const event = req.body as { event?: string; data?: { id?: string; status?: string; reason?: string } }
       const documentId = event?.data?.id
       if (!documentId) {
         res.json({ ok: true, ignored: true })
@@ -199,13 +199,26 @@ export const clmAssinafyWebhook = onRequest(
       const ws = CLM_WORKSPACE.value()
       const col = clmDb().collection(`clm/${ws}/documents`)
       const hits = await col.where('assinafy.documentId', '==', documentId).limit(5).get()
+      const now = new Date().toISOString()
+
       await Promise.all(
-        hits.docs.map((d) =>
-          d.ref.set(
-            { assinafy: { documentId, status: event?.data?.status ?? null, event: event?.event ?? null, updatedAt: new Date().toISOString() } },
-            { merge: true },
-          ),
-        ),
+        hits.docs.map(async (snap) => {
+          const doc = snap.data() as FirestoreDocument
+          const patch: Record<string, unknown> = {
+            assinafy: {
+              documentId,
+              status: event?.data?.status ?? null,
+              event: event?.event ?? null,
+              updatedAt: now,
+              ...(event?.data?.reason ? { rejectedReason: event.data.reason } : {}),
+            },
+            modifiedAt: now,
+            modifiedById: 'workflow',
+          }
+          const moved = applyEventToWorkflow(doc, event?.event, now)
+          if (moved) Object.assign(patch, moved)
+          await snap.ref.set(patch, { merge: true })
+        }),
       )
       logger.info('Webhook aplicado', { documentId, event: event?.event, atualizados: hits.size })
       res.json({ ok: true, updated: hits.size })
@@ -215,3 +228,70 @@ export const clmAssinafyWebhook = onRequest(
     }
   },
 )
+
+
+interface WorkflowStep {
+  name: string
+  status: 'pending' | 'in_progress' | 'done' | 'skipped' | 'rejected'
+  startedAt?: string
+  completedAt?: string
+  durationHours?: number
+  note?: string
+}
+
+interface FirestoreDocument {
+  workflow?: WorkflowStep[]
+  status?: string
+}
+
+/**
+ * Converte o evento do Assinafy em avanço do fluxo.
+ *
+ * Só três eventos movem o contrato. Os demais servem para acompanhamento e
+ * ficam apenas no campo `assinafy`, sem mexer nas etapas.
+ */
+function applyEventToWorkflow(doc: FirestoreDocument, event: string | undefined, now: string): Record<string, unknown> | null {
+  const workflow = doc.workflow
+  if (!Array.isArray(workflow) || workflow.length === 0) return null
+
+  const idx = workflow.findIndex((w) => w.status === 'in_progress')
+  if (idx < 0) return null
+  const next = workflow.map((w) => ({ ...w }))
+  const cur = next[idx]
+
+  const close = () => {
+    cur.completedAt = now
+    if (cur.startedAt) {
+      cur.durationHours = Math.round(((Date.parse(now) - Date.parse(cur.startedAt)) / 3600_000) * 10) / 10
+    }
+  }
+
+  if (event === 'document_ready') {
+    // Último signatário assinou: encerra a etapa e conclui o contrato.
+    close()
+    cur.status = 'done'
+    for (let i = idx + 1; i < next.length; i++) {
+      next[i].status = 'done'
+      next[i].startedAt = next[i].startedAt ?? now
+      next[i].completedAt = now
+      next[i].durationHours = next[i].durationHours ?? 0
+    }
+    return { workflow: next, status: 'Assinado' }
+  }
+
+  if (event === 'signer_rejected_document' || event === 'user_rejected_document') {
+    close()
+    cur.status = 'rejected'
+    cur.note = `${cur.note ? cur.note + ' | ' : ''}${event === 'signer_rejected_document' ? 'Signatário recusou a assinatura' : 'Documento cancelado'}`
+    return { workflow: next, status: 'Rejeitado' }
+  }
+
+  if (event === 'document_processing_failed') {
+    close()
+    cur.status = 'rejected'
+    cur.note = `${cur.note ? cur.note + ' | ' : ''}Assinafy não conseguiu processar o arquivo`
+    return { workflow: next, status: 'Rejeitado' }
+  }
+
+  return null
+}

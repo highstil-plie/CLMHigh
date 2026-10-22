@@ -2,6 +2,8 @@ import { ChevronDown, ChevronLeft, ChevronUp, Clock, Copy, Download, GitBranch, 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Avatar, Modal, StatusBadge, useToast } from '../components/ui'
+import { AssinafyPanel, SignatureDialog } from '../components/SignatureDialog'
+import { firebaseEnabled } from '../lib/firebase'
 import { renderDocument, renderPlainText } from '../lib/engine'
 import { cx, daysUntil, downloadText, fmtCurrency, fmtDate, fmtDateTime, fromInputDate, relativeTime, toInputDate } from '../lib/utils'
 import { useCurrentUser, useStore } from '../store'
@@ -86,6 +88,7 @@ export default function DocumentDetail() {
   const [rejectModal, setRejectModal] = useState(false)
   const [mentionOpen, setMentionOpen] = useState(false)
   const [tagInput, setTagInput] = useState('')
+  const [signDialog, setSignDialog] = useState(false)
   const commentRef = useRef<HTMLTextAreaElement>(null)
   const [caretBump, setCaretBump] = useState(0)
 
@@ -163,9 +166,13 @@ export default function DocumentDetail() {
           {currentStep && canAct && !rejectedStep && (
             <>
               <button className="btn-secondary" onClick={() => setRejectModal(true)}>Rejeitar</button>
-              <button className="btn-primary" onClick={() => { completeStep(doc.id, 'approve'); toast(`${currentStep.name} concluída`) }}>
-                {currentStep.name === 'Assinatura em Andamento' ? 'Marcar como assinado' : currentStep.name === 'Revisão Externa' ? 'Concluir revisão externa' : `Aprovar ${currentStep.name}`}
-              </button>
+              {currentStep.name === 'Assinatura em Andamento' && firebaseEnabled && !doc.assinafy ? (
+                <button className="btn-primary" onClick={() => setSignDialog(true)}>Enviar para assinatura</button>
+              ) : (
+                <button className="btn-primary" onClick={() => { completeStep(doc.id, 'approve'); toast(`${currentStep.name} concluída`) }}>
+                  {currentStep.name === 'Assinatura em Andamento' ? 'Marcar como assinado' : currentStep.name === 'Revisão Externa' ? 'Concluir revisão externa' : `Aprovar ${currentStep.name}`}
+                </button>
+              )}
             </>
           )}
           {currentStep && !canAct && !rejectedStep && (
@@ -323,6 +330,7 @@ export default function DocumentDetail() {
                   <Row k="Páginas" v={String(doc.pages)} />
                   <Row k="Criado em" v={fmtDateTime(doc.createdAt)} />
                   <Row k="Descrição" v={<textarea className="input" rows={3} defaultValue={doc.description} onBlur={(e) => e.target.value !== doc.description && updateDocument(doc.id, { description: e.target.value })} />} />
+                  {doc.assinafy && <Row k="Assinatura" v={<AssinafyPanel doc={doc} />} />}
                   {doc.attachments.length > 0 && <Row k="Anexos" v={doc.attachments.map((a) => <div key={a.id}>{a.name} <span className="text-gray-500">({Math.round(a.size / 1024)} KB)</span></div>)} />}
                 </dl>
               )}
@@ -418,6 +426,8 @@ export default function DocumentDetail() {
         <label className="label req">Prazo</label>
         <input type="date" className="input" value={taskDue} onChange={(e) => setTaskDue(e.target.value)} />
       </Modal>
+
+      <SignatureDialog doc={doc} open={signDialog} onClose={() => setSignDialog(false)} onSent={(m) => toast(m)} />
 
       <Modal
         open={rejectModal}

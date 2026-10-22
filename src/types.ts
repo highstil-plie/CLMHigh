@@ -99,6 +99,23 @@ export interface Version {
   note: string
 }
 
+export type ArtifactName = 'original' | 'certificated' | 'certificate-page' | 'pades' | 'bundle'
+
+/** Vínculo do contrato com o documento correspondente no Assinafy. */
+export interface AssinafyLink {
+  documentId: string
+  /** Status devolvido pelo Assinafy, ex.: uploaded, pending_signature, certificated. */
+  status: string | null
+  /** Último tipo de evento recebido por webhook. */
+  event?: string | null
+  sentAt?: string
+  sentById?: ID
+  signers?: { name: string; email: string }[]
+  updatedAt?: string
+  /** Preenchido quando o signatário recusa ou o documento é cancelado. */
+  rejectedReason?: string | null
+}
+
 export interface Attachment {
   id: ID
   name: string
@@ -220,6 +237,8 @@ export interface Document {
   modifiedAt: string
   modifiedById: ID | 'workflow'
   pages: number
+  /** Presente depois que o contrato é enviado para assinatura. */
+  assinafy?: AssinafyLink
 }
 
 export interface Report {
