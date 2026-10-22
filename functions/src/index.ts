@@ -56,7 +56,13 @@ async function requireMember(email: string | undefined, uid: string | undefined)
 async function requireMemberFromHeader(authorization: string | undefined): Promise<Caller> {
   const token = authorization?.startsWith('Bearer ') ? authorization.slice(7) : null
   if (!token) throw new HttpsError('unauthenticated', 'Token ausente.')
-  const decoded = await getAuth().verifyIdToken(token)
+  let decoded
+  try {
+    decoded = await getAuth().verifyIdToken(token)
+  } catch {
+    // Token expirado ou malformado é falha de autenticação, não erro do servidor.
+    throw new HttpsError('unauthenticated', 'Sessão expirada. Entre novamente.')
+  }
   return requireMember(decoded.email, decoded.uid)
 }
 

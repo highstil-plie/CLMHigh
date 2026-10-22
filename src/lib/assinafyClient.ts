@@ -17,8 +17,39 @@ function projectId(): string {
   return import.meta.env.VITE_FIREBASE_PROJECT_ID ?? ''
 }
 
+/**
+ * Base das funções HTTP. O endereço legado `cloudfunctions.net` funciona para
+ * funções de 2ª geração, mas leva alguns minutos para voltar a responder depois
+ * de um deploy. A variável permite apontar direto para o endereço `run.app`
+ * sem mexer no código.
+ */
+const FUNCTIONS_BASE = (import.meta.env.VITE_CLM_FUNCTIONS_BASE || '').replace(/\/$/, '')
+
+/** Sufixo do endereço direto no Cloud Run, visto na saída do deploy. */
+const RUN_HASH = import.meta.env.VITE_CLM_FUNCTIONS_HASH || ''
+
 function endpoint(name: string): string {
+  if (FUNCTIONS_BASE) return `${FUNCTIONS_BASE}/${name}`
   return `https://${REGION}-${projectId()}.cloudfunctions.net/${name}`
+}
+
+/** Endereço direto da função, usado quando o legado não responde. */
+function runEndpoint(name: string): string | null {
+  if (!RUN_HASH) return null
+  return `https://${name.toLowerCase()}-${RUN_HASH}.a.run.app`
+}
+
+/**
+ * Chama a função pelo endereço legado e, se ele devolver 404, tenta o endereço
+ * direto do Cloud Run. O legado às vezes deixa de responder por alguns minutos
+ * depois de um deploy, e não vale perder o envio por causa disso.
+ */
+async function callFunction(name: string, init: RequestInit): Promise<Response> {
+  const res = await fetch(endpoint(name), init)
+  if (res.status !== 404) return res
+  const alt = runEndpoint(name)
+  if (!alt) return res
+  return fetch(alt, init)
 }
 
 async function idToken(): Promise<string> {
@@ -32,6 +63,11 @@ function assertEnabled() {
 }
 
 async function readError(res: Response, fallback: string): Promise<never> {
+  if (res.status === 404) {
+    throw new Error(
+      'A função não respondeu (404). Isso acontece nos primeiros minutos após um deploy, enquanto o endereço propaga. Tente de novo em instantes.',
+    )
+  }
   let msg = fallback
   try {
     const j = (await res.json()) as { error?: string }
@@ -45,7 +81,7 @@ async function readError(res: Response, fallback: string): Promise<never> {
 /** Envia o PDF e devolve o id do documento no Assinafy. */
 export async function uploadToAssinafy(file: Blob, fileName: string): Promise<{ documentId: string; status: string | null }> {
   assertEnabled()
-  const res = await fetch(endpoint('clmAssinafyUpload'), {
+  const res = await callFunction('clmAssinafyUpload', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${await idToken()}`,
@@ -61,8 +97,13 @@ export async function uploadToAssinafy(file: Blob, fileName: string): Promise<{ 
 /** Baixa um artefato e devolve como Blob, para abrir ou salvar. */
 export async function downloadFromAssinafy(documentId: string, artifact: ArtifactName = 'original'): Promise<Blob> {
   assertEnabled()
-  const url = `${endpoint('clmAssinafyDownload')}?documentId=${encodeURIComponent(documentId)}&artifact=${artifact}`
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${await idToken()}` } })
+  const qs = `?documentId=${encodeURIComponent(documentId)}&artifact=${artifact}`
+  const init = { headers: { Authorization: `Bearer ${await idToken()}` } }
+  let res = await fetch(endpoint('clmAssinafyDownload') + qs, init)
+  if (res.status === 404) {
+    const alt = runEndpoint('clmAssinafyDownload')
+    if (alt) res = await fetch(alt + qs, init)
+  }
   if (!res.ok) await readError(res, 'Falha ao baixar o documento.')
   return res.blob()
 }

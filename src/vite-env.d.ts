@@ -12,6 +12,8 @@ interface ImportMetaEnv {
   readonly VITE_FIREBASE_MEASUREMENT_ID?: string
   readonly VITE_CLM_WORKSPACE?: string
   readonly VITE_GOOGLE_HOSTED_DOMAIN?: string
+  readonly VITE_CLM_FUNCTIONS_BASE?: string
+  readonly VITE_CLM_FUNCTIONS_HASH?: string
 }
 
 interface ImportMeta {
