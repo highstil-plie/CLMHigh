@@ -2,7 +2,9 @@
 
 Aplicação web que reproduz o funcionamento do Docusign CLM, seguindo passo a passo o tour guiado publicado em `docusign.com/pt-br/produtos/clm`.
 
-Roda inteiramente no navegador. Não há backend: os dados ficam em `localStorage` e são recriados a partir de uma semente determinística na primeira execução.
+Roda inteiramente no navegador. Não há backend: tudo fica em `localStorage`.
+
+O aplicativo **abre vazio**, sem nenhum contrato, parte ou relatório. Vêm configurados apenas os três modelos, a biblioteca de cláusulas e as regras condicionais, que são o que faz o motor funcionar. Para ver os painéis povoados há um conjunto de dados de exemplo que se carrega sob demanda em Administrador.
 
 ## Como executar
 
@@ -56,11 +58,17 @@ Os 14 passos do tour guiado, na mesma ordem:
 
 **Painéis.** Quatro painéis com dez visualizações disponíveis: tempo médio por etapa, contratos por tipo, por status e por tipo de parte, próximos da expiração, expiração por mês, valor contratado por mês, tempo de ciclo, minhas tarefas e documentos recentes. Cada painel é personalizável.
 
-**Administração.** Modelos, biblioteca de cláusulas com aprovação prévia do Jurídico, ativação de regras condicionais, usuários e restauração dos dados de demonstração.
+**Administração.** Modelos, biblioteca de cláusulas com aprovação prévia do Jurídico, ativação de regras condicionais, usuários, dados da empresa contratante e carga ou limpeza dos dados de demonstração.
+
+## Primeiros passos
+
+1. Em **Administrador → Empresa e dados**, preencha os dados da empresa contratante. Eles entram no cabeçalho e na qualificação das partes de todo contrato. Enquanto estiverem em branco, o contrato mostra o campo entre colchetes.
+2. Ainda nessa aba, ajuste nome, e-mail e cargo do seu usuário.
+3. Gere o primeiro contrato pelo menu **Ações**. Com o repositório vazio, escolha a opção de parte nova: os dados informados criam a parte automaticamente.
 
 ## Trocar de usuário
 
-O avatar no canto superior direito permite entrar como qualquer um dos seis usuários. Isso muda quais tarefas aparecem e quais aprovações podem ser executadas. O fluxo completo do MSA passa por Douglas Silva, Alice Gomes, Gabriela Gomes e André Santos.
+O estado inicial tem um único usuário, e todas as regras de aprovação apontam para ele. Com os dados de demonstração carregados passam a existir seis, e o avatar no canto superior direito permite entrar como qualquer um. Isso muda quais tarefas aparecem e quais aprovações podem ser executadas. O fluxo completo do MSA passa por Douglas Silva, Alice Gomes, Gabriela Gomes e André Santos.
 
 ## Estrutura
 
@@ -71,16 +79,20 @@ src/
   lib/engine.ts         montagem do contrato e cálculo do fluxo
   lib/utils.ts          formatação, datas, condições
   data/templates.ts     modelos, cláusulas e regras
-  data/seed.ts          geração dos 113 documentos de exemplo
+  data/empty.ts         estado inicial vazio
+  data/seed.ts          dados de demonstração, carregados sob demanda
   components/           layout, visualizações, componentes de interface
   pages/                uma página por rota
 ```
 
 ## Dados de demonstração
 
-113 documentos, 14 partes, 20 contatos (14 externos e 6 internos), 23 relatórios e 8 cláusulas. A empresa contratante é a Tally Inc.
+Não entram sozinhos. Em **Administrador → Empresa e dados** há dois botões:
 
-A semente é determinística (`rng(20241204)` em `src/data/seed.ts`), então os números do painel são estáveis entre execuções. Documentos e partes que você criar entram por cima dessa base. Para restaurar: Administrador → Empresa e dados → Restaurar dados de demonstração.
+- **Carregar dados de demonstração** substitui tudo por 113 documentos, 14 partes, 20 contatos, 23 relatórios e 6 usuários fictícios, com a Tally Inc. como empresa contratante. Serve para ver painéis e relatórios povoados sem cadastrar nada à mão.
+- **Voltar ao estado inicial** apaga tudo que foi cadastrado, inclusive os dados da empresa, preservando apenas modelos, cláusulas e regras.
+
+A semente é determinística (`rng(20241204)` em `src/data/seed.ts`), então os números do painel são sempre os mesmos.
 
 ### De onde vêm os dados
 

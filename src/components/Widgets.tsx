@@ -23,7 +23,17 @@ export const WIDGET_META: Record<WidgetId, { title: string; description: string;
   cycle_time: { title: 'Tempo de Ciclo até Assinatura', description: 'Horas médias entre criação e assinatura, por mês' },
 }
 
-function WidgetCard({ id, count, subtitle, children, wide }: { id: WidgetId; count: string; subtitle?: ReactNode; children: ReactNode; wide?: boolean }) {
+function NoData({ hint }: { hint: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center text-center py-12 px-4 text-sm text-gray-500">
+      <span className="text-2xl mb-2">—</span>
+      <p className="max-w-xs">{hint}</p>
+      <Link to="/clm/gerar" className="text-primary hover:underline mt-2">Gerar um documento</Link>
+    </div>
+  )
+}
+
+function WidgetCard({ id, count, subtitle, children, wide, empty }: { id: WidgetId; count: string; subtitle?: ReactNode; children: ReactNode; wide?: boolean; empty?: string }) {
   const [tick, setTick] = useState(() => Date.now() - Math.floor(3 + Math.random() * 9) * 60000)
   const meta = WIDGET_META[id]
   return (
@@ -43,8 +53,14 @@ function WidgetCard({ id, count, subtitle, children, wide }: { id: WidgetId; cou
           </button>
         </div>
       </div>
-      {subtitle && <div className="text-sm mt-3 mb-1">{subtitle}</div>}
-      <div className="mt-2">{children}</div>
+      {empty ? (
+        <NoData hint={empty} />
+      ) : (
+        <>
+          {subtitle && <div className="text-sm mt-3 mb-1">{subtitle}</div>}
+          <div className="mt-2">{children}</div>
+        </>
+      )}
     </div>
   )
 }
@@ -176,7 +192,7 @@ export function Widget({ id }: { id: WidgetId }) {
   switch (id) {
     case 'avg_step_time':
       return (
-        <WidgetCard id={id} count={`${fmtNumber(data.n)} Etapas`} subtitle={<Sub metric="Duração Média por Etapa" by="Etapa" range="Últimos 90 Dias" />}>
+        <WidgetCard id={id} count={`${fmtNumber(data.n)} Etapas`} empty={data.rows!.length === 0 ? 'Nenhuma etapa concluída nos últimos 90 dias.' : undefined} subtitle={<Sub metric="Duração Média por Etapa" by="Etapa" range="Últimos 90 Dias" />}>
           <div className="h-[300px]">
             <ResponsiveContainer>
               <BarChart data={data.rows} margin={{ top: 10, right: 10, left: 0, bottom: 20 }}>
@@ -192,25 +208,25 @@ export function Widget({ id }: { id: WidgetId }) {
       )
     case 'by_type':
       return (
-        <WidgetCard id={id} count={`${fmtNumber(data.n)} Documentos`} subtitle={<Sub metric="Documento Contagem" by="Tipo de Documento" range="Últimos 365 Dias" />}>
+        <WidgetCard id={id} count={`${fmtNumber(data.n)} Documentos`} empty={data.rows!.length === 0 ? 'Nenhum documento criado nos últimos 365 dias.' : undefined} subtitle={<Sub metric="Documento Contagem" by="Tipo de Documento" range="Últimos 365 Dias" />}>
           <Donut data={data.rows!} colors={(_, i) => TYPE_COLORS[i % TYPE_COLORS.length]} />
         </WidgetCard>
       )
     case 'by_status':
       return (
-        <WidgetCard id={id} count={`${fmtNumber(data.n)} Documentos`} subtitle={<Sub metric="Documento Contagem" by="Status" range="Todos" />}>
+        <WidgetCard id={id} count={`${fmtNumber(data.n)} Documentos`} empty={data.rows!.length === 0 ? 'Nenhum documento no repositório ainda.' : undefined} subtitle={<Sub metric="Documento Contagem" by="Status" range="Todos" />}>
           <Donut data={data.rows!} colors={(name, i) => STATUS_CHART_COLORS[name] ?? TYPE_COLORS[i % TYPE_COLORS.length]} />
         </WidgetCard>
       )
     case 'by_party_type':
       return (
-        <WidgetCard id={id} count={`${fmtNumber(data.n)} Documentos`} subtitle={<Sub metric="Documento Contagem" by="Tipo de Parte" range="Todos" />}>
+        <WidgetCard id={id} count={`${fmtNumber(data.n)} Documentos`} empty={data.rows!.length === 0 ? 'Nenhuma parte com documentos ainda.' : undefined} subtitle={<Sub metric="Documento Contagem" by="Tipo de Parte" range="Todos" />}>
           <Donut data={data.rows!} colors={(_, i) => ['#0f8a86', '#f47b1f', '#5b8def'][i % 3]} />
         </WidgetCard>
       )
     case 'expiring_soon':
       return (
-        <WidgetCard id={id} count={`${data.n} Registros`} wide={meta.wide}>
+        <WidgetCard id={id} count={`${data.n} Registros`} wide={meta.wide} empty={documents.length === 0 ? 'Nenhum contrato no repositório ainda.' : undefined}>
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
@@ -248,7 +264,7 @@ export function Widget({ id }: { id: WidgetId }) {
       )
     case 'expiring_by_month':
       return (
-        <WidgetCard id={id} count={`${data.n} Documentos`} subtitle={<Sub metric="Documento Contagem" by="Data (Mensal)" range="Próximos 12 Meses" />}>
+        <WidgetCard id={id} count={`${data.n} Documentos`} empty={data.rows!.length === 0 ? 'Nenhum contrato vigente expira nos próximos 12 meses.' : undefined} subtitle={<Sub metric="Documento Contagem" by="Data (Mensal)" range="Próximos 12 Meses" />}>
           <div className="h-[260px]">
             <ResponsiveContainer>
               <BarChart data={data.rows} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
@@ -264,7 +280,7 @@ export function Widget({ id }: { id: WidgetId }) {
       )
     case 'value_by_month':
       return (
-        <WidgetCard id={id} count={`${data.n} Documentos`} wide={meta.wide} subtitle={<Sub metric="Soma do Valor" by="Mês de Criação" range="Últimos 12 Meses" />}>
+        <WidgetCard id={id} count={`${data.n} Documentos`} wide={meta.wide} empty={data.rows!.length === 0 ? 'Nenhum documento criado nos últimos 12 meses.' : undefined} subtitle={<Sub metric="Soma do Valor" by="Mês de Criação" range="Últimos 12 Meses" />}>
           <div className="h-[260px]">
             <ResponsiveContainer>
               <BarChart data={data.rows} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
@@ -280,7 +296,7 @@ export function Widget({ id }: { id: WidgetId }) {
       )
     case 'cycle_time':
       return (
-        <WidgetCard id={id} count={`${data.n} Documentos`} subtitle={<Sub metric="Horas até Assinatura" by="Mês" range="Últimos 12 Meses" />}>
+        <WidgetCard id={id} count={`${data.n} Documentos`} empty={data.rows!.length === 0 ? 'Nenhum contrato assinado ainda.' : undefined} subtitle={<Sub metric="Horas até Assinatura" by="Mês" range="Últimos 12 Meses" />}>
           <div className="h-[260px]">
             <ResponsiveContainer>
               <LineChart data={data.rows} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
@@ -322,7 +338,7 @@ export function Widget({ id }: { id: WidgetId }) {
       )
     case 'recent_docs':
       return (
-        <WidgetCard id={id} count={`${data.n} Documentos`}>
+        <WidgetCard id={id} count={`${data.n} Documentos`} empty={data.docs!.length === 0 ? 'Nenhum documento no repositório ainda.' : undefined}>
           <ul className="divide-y divide-line">
             {data.docs!.map((d: Document) => (
               <li key={d.id} className="py-2.5 flex items-center gap-3 text-sm">

@@ -56,6 +56,13 @@ export default function Parties() {
                 </tr>
               )
             })}
+            {list.length === 0 && (
+              <tr>
+                <td className="td text-center text-gray-500 py-16" colSpan={6}>
+                  {parties.length === 0 ? 'Nenhuma parte cadastrada. As partes entram aqui ao serem criadas em "Nova parte" ou durante a geração de um contrato.' : 'Nenhuma parte corresponde à busca.'}
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>

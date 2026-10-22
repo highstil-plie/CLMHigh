@@ -2,10 +2,11 @@ import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import type { Clause, Company, Contact, Dashboard, Document, FormData, GenerationDraft, Party, Report, Task, Template, User, WidgetId } from './types'
 import { createSeed } from './data/seed'
+import { createEmptyState } from './data/empty'
 import { computeWorkflow, effectiveTerms, estimatePages, renderDocument, resolveParty, statusFromWorkflow } from './lib/engine'
-import { addDays, addMonths, uid } from './lib/utils'
+import { addDays, addMonths, initials, uid } from './lib/utils'
 
-const SEED_VERSION = 3
+const STATE_VERSION = 4
 
 export interface AppState {
   users: User[]
@@ -48,7 +49,12 @@ export interface AppState {
   addContact: (c: Omit<Contact, 'id'>) => void
   toggleFavoriteFilter: (id: string) => void
   setAppliedFilters: (ids: string[]) => void
-  resetAll: () => void
+  updateCompany: (patch: Partial<Company>) => void
+  updateUser: (id: string, patch: Partial<User>) => void
+  loadDemoData: () => void
+  clearAll: () => void
+  /** true quando ainda não há nada cadastrado além da configuração inicial */
+  isEmpty: () => boolean
 }
 
 function nextCode(docs: Document[]): string {
@@ -71,9 +77,7 @@ const ABBR: Record<string, string> = {
 export const useStore = create<AppState>()(
   persist(
     (set, get) => ({
-      ...createSeed(),
-      currentUserId: 'u_douglas',
-      activeDashboardId: 'dash_contracts',
+      ...createEmptyState(),
       draft: null,
       favoriteFilters: [],
       appliedFilters: ['createdAt'],
@@ -297,13 +301,32 @@ export const useStore = create<AppState>()(
       toggleFavoriteFilter: (id) => set((s) => ({ favoriteFilters: s.favoriteFilters.includes(id) ? s.favoriteFilters.filter((f) => f !== id) : [...s.favoriteFilters, id] })),
       setAppliedFilters: (ids) => set({ appliedFilters: ids }),
 
-      resetAll: () => set({ ...createSeed(), draft: null, activeDashboardId: 'dash_contracts', favoriteFilters: [], appliedFilters: ['createdAt'] }),
+      updateCompany: (patch) => set((s) => ({ company: { ...s.company, ...patch } })),
+
+      updateUser: (id, patch) =>
+        set((s) => ({
+          users: s.users.map((u) => {
+            if (u.id !== id) return u
+            const next = { ...u, ...patch }
+            if (patch.name && !patch.initials) next.initials = initials(patch.name) || 'U'
+            return next
+          }),
+        })),
+
+      loadDemoData: () => set({ ...createSeed(), currentUserId: 'u_douglas', activeDashboardId: 'dash_contracts', draft: null, favoriteFilters: [], appliedFilters: ['createdAt'] }),
+
+      clearAll: () => set({ ...createEmptyState(), draft: null, favoriteFilters: [], appliedFilters: ['createdAt'] }),
+
+      isEmpty: () => {
+        const s = get()
+        return s.documents.length === 0 && s.parties.length === 0 && s.reports.length === 0
+      },
     }),
     {
       name: 'clm-state',
-      version: SEED_VERSION,
+      version: STATE_VERSION,
       storage: createJSONStorage(() => localStorage),
-      migrate: (state) => ({ ...(state as object), ...createSeed(), draft: null }) as unknown as AppState,
+      migrate: () => ({ ...createEmptyState(), draft: null, favoriteFilters: [], appliedFilters: ['createdAt'] }) as unknown as AppState,
     },
   ),
 )

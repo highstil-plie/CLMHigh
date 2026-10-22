@@ -63,6 +63,13 @@ export default function Contacts() {
                 </tr>
               )
             })}
+            {list.length === 0 && (
+              <tr>
+                <td className="td text-center text-gray-500 py-16" colSpan={5}>
+                  {contacts.length === 0 ? 'Nenhum contato cadastrado.' : 'Nenhum contato corresponde à busca.'}
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>

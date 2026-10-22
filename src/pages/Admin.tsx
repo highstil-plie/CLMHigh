@@ -2,9 +2,30 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Avatar, Checkbox, Modal, PageHeader, useToast } from '../components/ui'
 import { cx, fmtDate } from '../lib/utils'
-import { useStore } from '../store'
+import { useCurrentUser, useStore } from '../store'
+import type { Company } from '../types'
 
 type Tab = 'templates' | 'clauses' | 'rules' | 'users' | 'company'
+
+const COMPANY_FIELDS: [keyof Company, string, boolean][] = [
+  ['name', 'Nome curto', false],
+  ['cnpj', 'CNPJ', false],
+  ['legalName', 'Razão social', true],
+  ['address', 'Endereço', true],
+  ['city', 'Cidade', false],
+  ['state', 'Estado', false],
+  ['zip', 'CEP', false],
+]
+
+const COMPANY_PLACEHOLDERS: Record<keyof Company, string> = {
+  name: 'Como a empresa é chamada no contrato',
+  cnpj: '00.000.000/0000-00',
+  legalName: 'Razão social completa',
+  address: 'Rua, número, complemento, bairro',
+  city: 'Cidade',
+  state: 'UF',
+  zip: '00000-000',
+}
 
 export default function Admin() {
   const [tab, setTab] = useState<Tab>('templates')
@@ -13,10 +34,17 @@ export default function Admin() {
   const users = useStore((s) => s.users)
   const company = useStore((s) => s.company)
   const documents = useStore((s) => s.documents)
+  const parties = useStore((s) => s.parties)
+  const reports = useStore((s) => s.reports)
   const toggleClauseApproved = useStore((s) => s.toggleClauseApproved)
   const toggleRule = useStore((s) => s.toggleRule)
   const addClause = useStore((s) => s.addClause)
-  const resetAll = useStore((s) => s.resetAll)
+  const updateCompany = useStore((s) => s.updateCompany)
+  const updateUser = useStore((s) => s.updateUser)
+  const loadDemoData = useStore((s) => s.loadDemoData)
+  const clearAll = useStore((s) => s.clearAll)
+  const me = useCurrentUser()
+  const isEmptyNow = documents.length === 0 && parties.length === 0 && reports.length === 0
   const { toast, node } = useToast()
   const [clauseModal, setClauseModal] = useState(false)
   const [clauseForm, setClauseForm] = useState({ title: '', category: 'Jurídico', body: '', approved: false })
@@ -124,20 +152,81 @@ export default function Admin() {
       )}
 
       {tab === 'company' && (
-        <div className="max-w-xl space-y-4">
-          <div className="card p-4">
-            <div className="font-medium mb-2">Empresa (parte contratante)</div>
-            <dl className="text-sm grid grid-cols-[140px_1fr] gap-y-1">
-              <dt className="text-gray-500">Nome</dt><dd>{company.name}</dd>
-              <dt className="text-gray-500">Razão social</dt><dd>{company.legalName}</dd>
-              <dt className="text-gray-500">CNPJ</dt><dd>{company.cnpj}</dd>
-              <dt className="text-gray-500">Endereço</dt><dd>{company.address}, {company.city}/{company.state}, {company.zip}</dd>
-            </dl>
+        <div className="max-w-2xl space-y-5">
+          <div className="card p-5">
+            <div className="font-medium">Empresa (parte contratante)</div>
+            <p className="text-sm text-gray-600 mt-1 mb-4">
+              Estes dados entram no cabeçalho e na qualificação das partes de todo contrato gerado. Enquanto estiverem em branco, o contrato mostra o campo entre colchetes.
+            </p>
+            <div className="grid grid-cols-2 gap-4">
+              {COMPANY_FIELDS.map(([key, label, span]) => (
+                <div key={key} className={span ? 'col-span-2' : ''}>
+                  <label className="label">{label}</label>
+                  <input
+                    className="input"
+                    value={company[key]}
+                    placeholder={COMPANY_PLACEHOLDERS[key]}
+                    onChange={(e) => updateCompany({ [key]: e.target.value })}
+                  />
+                </div>
+              ))}
+            </div>
+            {!company.name && <div className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded p-3 mt-4">Informe ao menos o nome para que os contratos saiam identificados.</div>}
           </div>
-          <div className="card p-4">
-            <div className="font-medium mb-1">Dados de demonstração</div>
-            <p className="text-sm text-gray-600 mb-3">Todos os dados ficam salvos no navegador (localStorage). Restaurar recria os dados de exemplo e apaga documentos criados por você.</p>
-            <button className="btn-danger" onClick={() => { if (confirm('Restaurar dados de demonstração? Documentos criados serão perdidos.')) { resetAll(); toast('Dados restaurados') } }}>Restaurar dados de demonstração</button>
+
+          <div className="card p-5">
+            <div className="font-medium">Seu usuário</div>
+            <p className="text-sm text-gray-600 mt-1 mb-4">Aparece como proprietário dos documentos, autor dos comentários e responsável pelas aprovações.</p>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="label">Nome</label>
+                <input className="input" value={me.name} onChange={(e) => updateUser(me.id, { name: e.target.value })} />
+              </div>
+              <div>
+                <label className="label">E-mail</label>
+                <input className="input" value={me.email} placeholder="voce@suaempresa.com.br" onChange={(e) => updateUser(me.id, { email: e.target.value })} />
+              </div>
+              <div className="col-span-2">
+                <label className="label">Cargo</label>
+                <input className="input" value={me.role} onChange={(e) => updateUser(me.id, { role: e.target.value })} />
+              </div>
+            </div>
+          </div>
+
+          <div className="card p-5">
+            <div className="font-medium">Dados</div>
+            <p className="text-sm text-gray-600 mt-1 mb-4">
+              Tudo fica salvo no navegador (localStorage) deste computador. Hoje há {documents.length} documento(s), {parties.length} parte(s) e {reports.length} relatório(s).
+            </p>
+            <div className="flex flex-wrap gap-3">
+              <button
+                className="btn-secondary"
+                onClick={() => {
+                  if (confirm('Carregar dados de demonstração? Isso substitui tudo que existe hoje por 113 documentos de exemplo, 14 partes e 6 usuários fictícios.')) {
+                    loadDemoData()
+                    toast('Dados de demonstração carregados')
+                  }
+                }}
+              >
+                Carregar dados de demonstração
+              </button>
+              <button
+                className="btn-danger"
+                disabled={isEmptyNow && !company.name}
+                title={isEmptyNow && !company.name ? 'O aplicativo já está no estado inicial' : undefined}
+                onClick={() => {
+                  if (confirm('Voltar ao estado inicial? Documentos, partes, contatos, tarefas e relatórios serão apagados, e os dados da empresa e do seu usuário voltarão a ficar em branco. Modelos, cláusulas e regras permanecem.')) {
+                    clearAll()
+                    toast('Aplicativo voltou ao estado inicial')
+                  }
+                }}
+              >
+                Voltar ao estado inicial
+              </button>
+            </div>
+            <p className="text-xs text-gray-500 mt-3">
+              Os dados de demonstração servem só para ver os painéis e relatórios povoados, e substituem inclusive a empresa e os usuários. Voltar ao estado inicial apaga tudo que foi cadastrado, inclusive os dados da empresa, e preserva apenas modelos, cláusulas e regras.
+            </p>
           </div>
         </div>
       )}

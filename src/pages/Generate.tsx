@@ -308,12 +308,17 @@ function FieldControl({ field, value, onChange, data }: { field: FormField; valu
       return (
         <Field label={field.label} required={field.required} hint={field.hint || warn ? hint : undefined} help={field.helpText}>
           <div className="relative max-w-md">
-            <select className="input appearance-none pr-8" value={String(value ?? '')} onChange={(e) => onChange(e.target.value)}>
-              <option value="">Selecione uma parte</option>
+            <select className="input appearance-none pr-8" value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} disabled={parties.length === 0}>
+              <option value="">{parties.length === 0 ? 'Nenhuma parte cadastrada' : 'Selecione uma parte'}</option>
               {parties.map((p) => <option key={p.id} value={p.id}>{p.name} — {p.type} ({p.city}/{p.state})</option>)}
             </select>
             <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-600" />
           </div>
+          {parties.length === 0 && (
+            <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2.5 mt-2">
+              Ainda não há partes cadastradas. Escolha a opção de parte nova acima e os dados informados criarão a parte automaticamente.
+            </div>
+          )}
           {value && (() => {
             const p = parties.find((x) => x.id === value)
             return p ? <div className="text-xs text-gray-600 mt-2">CNPJ {p.cnpj} · {p.address}, {p.city}/{p.state}, {p.zip}</div> : null

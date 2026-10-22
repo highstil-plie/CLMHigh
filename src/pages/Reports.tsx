@@ -207,6 +207,13 @@ export default function Reports() {
               <td className="td text-gray-500 text-xs">{runReport(r, documents).length}</td>
             </tr>
           ))}
+          {list.length === 0 && (
+            <tr>
+              <td className="td text-center text-gray-500 py-16" colSpan={8}>
+                {reports.length === 0 ? 'Nenhum relatório criado ainda. Use "Novo relatório" para salvar um recorte do repositório.' : 'Nenhum relatório corresponde à busca.'}
+              </td>
+            </tr>
+          )}
         </tbody>
       </table>
 

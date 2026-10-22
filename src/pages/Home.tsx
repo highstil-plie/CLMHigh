@@ -67,7 +67,7 @@ export default function Home() {
               <div className="text-xs leading-tight">
                 <div className="opacity-80 text-[10px] font-semibold">Assinado por:</div>
                 <div className="font-[cursive] text-lg -my-0.5">{user.name}</div>
-                <div className="text-[9px] opacity-80 tracking-wider">3E8C4D834A1947L...</div>
+                <div className="text-[9px] opacity-80 tracking-wider">{user.email || 'Defina seu e-mail em Administrador'}</div>
               </div>
             </div>
           </div>
