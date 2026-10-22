@@ -1,0 +1,53 @@
+rules_version = '2';
+
+// Regras do CLM. Só tratam da coleção `clm`, para conviver com outros aplicativos
+// no mesmo projeto do Firebase. Publique com:
+//   firebase deploy --only firestore:rules
+// ou cole no console: Firestore Database > Regras.
+//
+// IMPORTANTE: se o projeto já tem regras de outro aplicativo, acrescente o bloco
+// `match /clm/{ws}` às regras existentes em vez de substituir o arquivo inteiro.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function email() {
+      return request.auth != null && request.auth.token.email != null
+        ? request.auth.token.email.lower()
+        : '';
+    }
+
+    function wsPath(ws) {
+      return /databases/$(database)/documents/clm/$(ws);
+    }
+
+    function isMember(ws) {
+      return request.auth != null
+        && exists(wsPath(ws))
+        && email() in get(wsPath(ws)).data.members;
+    }
+
+    match /clm/{ws} {
+      // Qualquer autenticado pode descobrir se o espaço existe; o conteúdo
+      // (empresa, lista de membros) só é legível para quem é membro.
+      allow get: if request.auth != null && (!exists(wsPath(ws)) || isMember(ws));
+
+      // Primeiro acesso: quem cria o espaço precisa se listar como único membro.
+      allow create: if request.auth != null
+        && email() != ''
+        && request.resource.data.members == [email()];
+
+      allow update: if isMember(ws)
+        // Um membro não pode se excluir da lista nem esvaziá-la.
+        && request.resource.data.members.size() > 0
+        && email() in request.resource.data.members;
+
+      allow delete: if false;
+
+      // Contratos, partes, tarefas, relatórios, modelos, cláusulas e perfis.
+      match /{collection}/{docId} {
+        allow read, write: if isMember(ws);
+      }
+    }
+  }
+}

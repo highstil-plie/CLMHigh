@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom'
 import { Avatar, Checkbox, Modal, PageHeader, useToast } from '../components/ui'
 import { cx, fmtDate } from '../lib/utils'
 import { useCurrentUser, useStore } from '../store'
+import { firebaseEnabled } from '../lib/firebase'
+import { useAuth } from '../components/AuthGate'
 import type { Company } from '../types'
 
 type Tab = 'templates' | 'clauses' | 'rules' | 'users' | 'company'
@@ -43,6 +45,11 @@ export default function Admin() {
   const updateUser = useStore((s) => s.updateUser)
   const loadDemoData = useStore((s) => s.loadDemoData)
   const clearAll = useStore((s) => s.clearAll)
+  const members = useStore((s) => s.members)
+  const setMembers = useStore((s) => s.setMembers)
+  const setRuleApprover = useStore((s) => s.setRuleApprover)
+  const { user: authUser } = useAuth()
+  const [newMember, setNewMember] = useState('')
   const me = useCurrentUser()
   const isEmptyNow = documents.length === 0 && parties.length === 0 && reports.length === 0
   const { toast, node } = useToast()
@@ -124,7 +131,14 @@ export default function Admin() {
                     <div className="flex-1">
                       <div className={cx('font-medium', !r.enabled && 'text-gray-400')}>{r.name}</div>
                       <div className="text-sm text-gray-600">{r.description}</div>
-                      <div className="text-xs text-gray-500 mt-1 font-mono">SE {r.when.field} {r.when.op} {String(r.when.value ?? '')} → adicionar etapa <b>{r.addStep}</b> · aprovador: {users.find((u) => u.id === r.approverId)?.name}</div>
+                      <div className="text-xs text-gray-500 mt-1 font-mono">SE {r.when.field} {r.when.op} {String(r.when.value ?? '')} → adicionar etapa <b>{r.addStep}</b></div>
+                      <label className="text-xs text-gray-600 mt-2 inline-flex items-center gap-2">
+                        Aprovador
+                        <select className="input py-1 w-auto text-xs" value={r.approverId} onChange={(e) => setRuleApprover(t.id, r.id, e.target.value)}>
+                          {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                          {!users.some((u) => u.id === r.approverId) && <option value={r.approverId}>Usuário removido</option>}
+                        </select>
+                      </label>
                     </div>
                   </li>
                 ))}
@@ -193,16 +207,62 @@ export default function Admin() {
             </div>
           </div>
 
+          {firebaseEnabled && (
+            <div className="card p-5">
+              <div className="font-medium">Membros do espaço de trabalho</div>
+              <p className="text-sm text-gray-600 mt-1 mb-4">
+                Só estes e-mails conseguem ler e gravar os contratos, conforme as regras do Firestore. Criar conta no Firebase não dá acesso sozinho: o e-mail precisa estar nesta lista.
+              </p>
+              <ul className="divide-y divide-line mb-4">
+                {members.map((m) => (
+                  <li key={m} className="py-2 flex items-center gap-3 text-sm">
+                    <span className="flex-1">{m}</span>
+                    {m === authUser?.email && <span className="text-xs text-gray-500">você</span>}
+                    <button
+                      className="text-xs text-red-700 hover:underline disabled:text-gray-400 disabled:no-underline"
+                      disabled={members.length === 1 || m === authUser?.email}
+                      title={m === authUser?.email ? 'Você não pode remover o seu próprio acesso' : members.length === 1 ? 'O espaço precisa de ao menos um membro' : undefined}
+                      onClick={() => setMembers(members.filter((x) => x !== m))}
+                    >
+                      Remover
+                    </button>
+                  </li>
+                ))}
+                {members.length === 0 && <li className="py-2 text-sm text-gray-500">Nenhum membro listado.</li>}
+              </ul>
+              <form
+                className="flex gap-2"
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  const v = newMember.trim().toLowerCase()
+                  if (!v) return
+                  if (members.includes(v)) { toast('Este e-mail já é membro'); setNewMember(''); return }
+                  setMembers([...members, v])
+                  setNewMember('')
+                  toast('Membro adicionado')
+                }}
+              >
+                <input className="input" type="email" placeholder="email@empresa.com.br" value={newMember} onChange={(e) => setNewMember(e.target.value)} />
+                <button className="btn-secondary">Adicionar</button>
+              </form>
+            </div>
+          )}
+
           <div className="card p-5">
             <div className="font-medium">Dados</div>
             <p className="text-sm text-gray-600 mt-1 mb-4">
-              Tudo fica salvo no navegador (localStorage) deste computador. Hoje há {documents.length} documento(s), {parties.length} parte(s) e {reports.length} relatório(s).
+              {firebaseEnabled
+                ? 'Tudo fica salvo no Firestore e é compartilhado por todos os membros, em tempo real.'
+                : 'Tudo fica salvo no navegador (localStorage) deste computador.'}{' '}
+              Hoje há {documents.length} documento(s), {parties.length} parte(s) e {reports.length} relatório(s).
             </p>
             <div className="flex flex-wrap gap-3">
               <button
                 className="btn-secondary"
                 onClick={() => {
-                  if (confirm('Carregar dados de demonstração? Isso substitui tudo que existe hoje por 113 documentos de exemplo, 14 partes e 6 usuários fictícios.')) {
+                  if (confirm(firebaseEnabled
+                    ? 'Carregar dados de demonstração? Isso substitui os contratos de TODOS os membros por 113 documentos de exemplo e 14 partes.'
+                    : 'Carregar dados de demonstração? Isso substitui tudo que existe hoje por 113 documentos de exemplo, 14 partes e 6 usuários fictícios.')) {
                     loadDemoData()
                     toast('Dados de demonstração carregados')
                   }
@@ -215,7 +275,9 @@ export default function Admin() {
                 disabled={isEmptyNow && !company.name}
                 title={isEmptyNow && !company.name ? 'O aplicativo já está no estado inicial' : undefined}
                 onClick={() => {
-                  if (confirm('Voltar ao estado inicial? Documentos, partes, contatos, tarefas e relatórios serão apagados, e os dados da empresa e do seu usuário voltarão a ficar em branco. Modelos, cláusulas e regras permanecem.')) {
+                  if (confirm(firebaseEnabled
+                    ? 'Voltar ao estado inicial? Documentos, partes, contatos, tarefas e relatórios serão apagados para TODOS os membros, e os dados da empresa voltarão a ficar em branco. Modelos, cláusulas e regras permanecem.'
+                    : 'Voltar ao estado inicial? Documentos, partes, contatos, tarefas e relatórios serão apagados, e os dados da empresa e do seu usuário voltarão a ficar em branco. Modelos, cláusulas e regras permanecem.')) {
                     clearAll()
                     toast('Aplicativo voltou ao estado inicial')
                   }

@@ -1,9 +1,11 @@
-import { ChevronDown, Grid3x3, HelpCircle, Search, X } from 'lucide-react'
+import { ChevronDown, Grid3x3, HelpCircle, LogOut, Search, X } from 'lucide-react'
 import { useState } from 'react'
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useCurrentUser, useStore } from '../store'
 import { Avatar, Dropdown, MenuItem } from './ui'
 import { cx } from '../lib/utils'
+import { firebaseEnabled } from '../lib/firebase'
+import { useAuth } from './AuthGate'
 
 export function Logo({ dark }: { dark?: boolean }) {
   return (
@@ -67,6 +69,7 @@ export function TopNav() {
   const setCurrentUser = useStore((s) => s.setCurrentUser)
   const tasks = useStore((s) => s.tasks)
   const openTasks = tasks.filter((t) => t.assigneeId === user.id && t.status === 'open').length
+  const { logout, sync } = useAuth()
 
   return (
     <header className="relative border-b border-line bg-white">
@@ -102,6 +105,11 @@ export function TopNav() {
           </Dropdown>
         </nav>
         <div className="ml-auto flex items-center gap-2">
+          {firebaseEnabled && sync.state !== 'online' && (
+            <span className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1" title={sync.message}>
+              {sync.state === 'connecting' ? 'Sincronizando...' : 'Sem sincronizar'}
+            </span>
+          )}
           {search ? (
             <form
               className="flex items-center gap-2"
@@ -130,14 +138,22 @@ export function TopNav() {
                   <div className="text-gray-600 text-xs">{user.role}</div>
                 </div>
                 <div className="my-1 border-t border-line" />
-                <div className="px-4 pt-1 pb-1 text-[11px] uppercase tracking-wide text-gray-500">Entrar como</div>
-                {users.map((u) => (
-                  <MenuItem key={u.id} onClick={() => { setCurrentUser(u.id); close() }}>
-                    <Avatar name={u.name} initials={u.initials} size={22} color={u.id === user.id ? 'bg-brand' : 'bg-gray-400'} />
-                    <span className={cx(u.id === user.id && 'font-medium')}>{u.name}</span>
-                    <span className="ml-auto text-xs text-gray-500">{u.role.split(' - ')[0]}</span>
+                {firebaseEnabled ? (
+                  <MenuItem onClick={() => { close(); void logout() }}>
+                    <LogOut size={16} /> Sair
                   </MenuItem>
-                ))}
+                ) : (
+                  <>
+                    <div className="px-4 pt-1 pb-1 text-[11px] uppercase tracking-wide text-gray-500">Entrar como</div>
+                    {users.map((u) => (
+                      <MenuItem key={u.id} onClick={() => { setCurrentUser(u.id); close() }}>
+                        <Avatar name={u.name} initials={u.initials} size={22} color={u.id === user.id ? 'bg-brand' : 'bg-gray-400'} />
+                        <span className={cx(u.id === user.id && 'font-medium')}>{u.name}</span>
+                        <span className="ml-auto text-xs text-gray-500">{u.role.split(' - ')[0]}</span>
+                      </MenuItem>
+                    ))}
+                  </>
+                )}
               </>
             )}
           </Dropdown>

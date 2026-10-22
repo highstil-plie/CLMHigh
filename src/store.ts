@@ -2,11 +2,22 @@ import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import type { Clause, Company, Contact, Dashboard, Document, FormData, GenerationDraft, Party, Report, Task, Template, User, WidgetId } from './types'
 import { createSeed } from './data/seed'
-import { createEmptyState } from './data/empty'
+import { createEmptyState, retargetRules } from './data/empty'
+import { firebaseEnabled } from './lib/firebase'
 import { computeWorkflow, effectiveTerms, estimatePages, renderDocument, resolveParty, statusFromWorkflow } from './lib/engine'
 import { addDays, addMonths, initials, uid } from './lib/utils'
 
-const STATE_VERSION = 4
+const STATE_VERSION = 5
+
+/** Com o Firebase ligado o estado vive no Firestore, não no navegador. */
+const noopStorage: Storage = {
+  length: 0,
+  clear: () => {},
+  getItem: () => null,
+  key: () => null,
+  removeItem: () => {},
+  setItem: () => {},
+}
 
 export interface AppState {
   users: User[]
@@ -24,6 +35,8 @@ export interface AppState {
   draft: GenerationDraft | null
   favoriteFilters: string[]
   appliedFilters: string[]
+  /** E-mails com acesso ao espaço de trabalho no Firestore. Vazio no modo local. */
+  members: string[]
 
   setCurrentUser: (id: string) => void
   createDocument: (input: { templateId: string; data: FormData }) => string
@@ -51,10 +64,10 @@ export interface AppState {
   setAppliedFilters: (ids: string[]) => void
   updateCompany: (patch: Partial<Company>) => void
   updateUser: (id: string, patch: Partial<User>) => void
+  setMembers: (emails: string[]) => void
+  setRuleApprover: (templateId: string, ruleId: string, approverId: string) => void
   loadDemoData: () => void
   clearAll: () => void
-  /** true quando ainda não há nada cadastrado além da configuração inicial */
-  isEmpty: () => boolean
 }
 
 function nextCode(docs: Document[]): string {
@@ -81,6 +94,7 @@ export const useStore = create<AppState>()(
       draft: null,
       favoriteFilters: [],
       appliedFilters: ['createdAt'],
+      members: [],
 
       setCurrentUser: (id) => set({ currentUserId: id }),
 
@@ -313,19 +327,55 @@ export const useStore = create<AppState>()(
           }),
         })),
 
-      loadDemoData: () => set({ ...createSeed(), currentUserId: 'u_douglas', activeDashboardId: 'dash_contracts', draft: null, favoriteFilters: [], appliedFilters: ['createdAt'] }),
+      setMembers: (emails) => set({ members: [...new Set(emails.map((e) => e.trim().toLowerCase()).filter(Boolean))] }),
 
-      clearAll: () => set({ ...createEmptyState(), draft: null, favoriteFilters: [], appliedFilters: ['createdAt'] }),
+      setRuleApprover: (templateId, ruleId, approverId) =>
+        set((s) => ({
+          templates: s.templates.map((t) =>
+            t.id === templateId ? { ...t, rules: t.rules.map((r) => (r.id === ruleId ? { ...r, approverId } : r)), updatedAt: new Date().toISOString() } : t,
+          ),
+        })),
 
-      isEmpty: () => {
-        const s = get()
-        return s.documents.length === 0 && s.parties.length === 0 && s.reports.length === 0
-      },
+      loadDemoData: () =>
+        set((s) => {
+          const seed = createSeed()
+          if (!firebaseEnabled) return { ...seed, currentUserId: 'u_douglas', activeDashboardId: 'dash_contracts', draft: null, favoriteFilters: [], appliedFilters: ['createdAt'] }
+          // Com Firebase, quem opera continua sendo a conta logada. Os usuários de
+          // exemplo entram apenas como rótulos, para os documentos terem proprietário.
+          const me = s.users.find((u) => u.id === s.currentUserId)
+          return {
+            ...seed,
+            users: me ? [...seed.users.filter((u) => u.id !== me.id), me] : seed.users,
+            currentUserId: s.currentUserId,
+            activeDashboardId: 'dash_contracts',
+            draft: null,
+            favoriteFilters: [],
+            appliedFilters: ['createdAt'],
+          }
+        }),
+
+      clearAll: () =>
+        set((s) => {
+          const base = createEmptyState()
+          if (!firebaseEnabled) return { ...base, draft: null, favoriteFilters: [], appliedFilters: ['createdAt'] }
+          const me = s.users.find((u) => u.id === s.currentUserId)
+          return {
+            ...base,
+            // Preserva só a conta logada e reaponta as regras para ela.
+            users: me ? [me] : base.users,
+            templates: me ? retargetRules(base.templates, me.id) : base.templates,
+            currentUserId: s.currentUserId,
+            draft: null,
+            favoriteFilters: [],
+            appliedFilters: ['createdAt'],
+          }
+        }),
+
     }),
     {
       name: 'clm-state',
       version: STATE_VERSION,
-      storage: createJSONStorage(() => localStorage),
+      storage: createJSONStorage(() => (firebaseEnabled ? noopStorage : localStorage)),
       migrate: () => ({ ...createEmptyState(), draft: null, favoriteFilters: [], appliedFilters: ['createdAt'] }) as unknown as AppState,
     },
   ),
