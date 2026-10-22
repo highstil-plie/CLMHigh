@@ -13,7 +13,14 @@ O projeto Firebase `hsmodas-comissoes-57f17` é compartilhado por vários sistem
 | Funções | codebase `clm`, prefixo `clm*` | As 57 funções existentes ficam noutro codebase |
 | Região | `southamerica-east1` | Mesma convenção do projeto |
 
-O site `hspl-contratos.web.app` responde 404 hoje, ou seja, nunca recebeu deploy. Não há nada a sobrescrever.
+**No ar em https://hspl-contratos.web.app**
+
+Funções publicadas em `southamerica-east1`. Elas respondem nos dois endereços, e o `cloudfunctions.net` é o que está cadastrado no Assinafy:
+
+```
+https://southamerica-east1-hsmodas-comissoes-57f17.cloudfunctions.net/clmAssinafyWebhook
+https://clmassinafywebhook-mkvgv2u52a-rj.a.run.app
+```
 
 ## 1. Regras do Firestore — já publicadas
 
